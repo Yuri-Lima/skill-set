@@ -134,6 +134,13 @@ export async function typeHuman(page, locator, text) {
 }
 
 export async function login(browser, nextPath) {
+  const email = process.env.DEMO_EMAIL;
+  const password = process.env.DEMO_PASSWORD;
+  if (!email || !password) {
+    throw new Error(
+      'Set DEMO_EMAIL and DEMO_PASSWORD for the demo user. This skill has no built-in credentials.',
+    );
+  }
   const base = demoBaseUrl();
   const context = await browser.newContext({
     viewport: { width: 1440, height: 900 },
@@ -144,8 +151,8 @@ export async function login(browser, nextPath) {
   await page.goto(`${base}/login?next=${nextPath}`, {
     waitUntil: 'domcontentloaded',
   });
-  await page.locator('#email').fill(process.env.DEMO_EMAIL ?? 'demo@ipt.local');
-  await page.locator('#password').fill(process.env.DEMO_PASSWORD ?? 'DemoPass123!');
+  await page.locator('#email').fill(email);
+  await page.locator('#password').fill(password);
   await page.getByRole('button', { name: /sign in/i }).click();
   await page.waitForURL((url) => !url.pathname.includes('/login'), {
     timeout: 45_000,

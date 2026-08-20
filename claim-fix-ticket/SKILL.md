@@ -28,14 +28,9 @@ Resolve from the workspace, then fall back:
 | Need | How to resolve |
 | --- | --- |
 | GitLab project | `git remote get-url origin` → `group/project` |
-| Stack / login | Project `docs/demo-user.md` or the user |
+| Demo login | Required env: `DEMO_EMAIL` and `DEMO_PASSWORD`. Do not invent or hard-code a product user. |
 | Quality gates | Project lint / typecheck / test commands (Nx, uv, etc.) |
 | Demo URLs | `PLAYWRIGHT_BASE_URL`, `MAILPIT_URL` from the local stack |
-
-IPT (Investment Portfolio Tracker) fallbacks when that repo is the cwd:
-project `trace-analysis/investment-portfolio-tracker`, demo
-`demo@ipt.local` / `DemoPass123!`, Compose web `:3000` + API `:8000`,
-gates `pnpm lint:api` / `typecheck:api` / `test:api` (and web / website).
 
 ## 1. Claim
 
@@ -80,6 +75,8 @@ Record the wrong behavior **before any code change**.
 
 ```bash
 export PLAYWRIGHT_BASE_URL=http://localhost:3000
+export DEMO_EMAIL=...
+export DEMO_PASSWORD=...
 export MAILPIT_URL=http://127.0.0.1:54324   # if the flow uses inbox links
 node docs/review-impact/<iid>-<slug>/record-before.mjs
 ffmpeg -y -i docs/review-impact/<iid>-<slug>/before.webm \

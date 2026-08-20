@@ -56,3 +56,6 @@ Ticket before/after and Eve demos are **local + MR uploads**. Do not
 commit `*.mp4` into product repos. `claim-fix-ticket` and
 `ticket-demo-video` both say to `gitlab__upload_markdown` and paste the
 returned markdown into the merge request body.
+
+Authenticated UI recordings need `DEMO_EMAIL` and `DEMO_PASSWORD` in
+the environment. There is no product-specific default user.

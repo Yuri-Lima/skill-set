@@ -146,6 +146,8 @@ bash "$SKILL_DIR/scripts/compose-studio.sh" \
 
 Resolve `PLAYWRIGHT_BASE_URL` from the local stack. Prefer host
 localhost when auth emails use `localhost` in `redirect_to`.
+Authenticated recordings require `DEMO_EMAIL` and `DEMO_PASSWORD` in
+the environment. The helper throws if either is missing.
 
 Helpers: `injectCursor`, `clickHuman`, `typeHuman`, `login`,
 `recordTicket` in `$SKILL_DIR/scripts/record-live-ui.mjs`. Write the
