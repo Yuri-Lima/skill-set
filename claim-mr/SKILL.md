@@ -1,39 +1,44 @@
 ---
 name: claim-mr
 description: >-
-  Post a short “claimed for review” note on a GitLab merge request so other
-  developers do not double-work the same MR. Accepts an MR URL or IID (e.g.
-  /claim-mr https://host/.../merge_requests/54 or /claim-mr 54). Uses the
-  GitLab MCP to create the note; optional: add self as reviewer. Use when
-  the user runs /claim-mr, or says "claim this MR", "claim MR", "I'm taking
-  this review", "avoid double work on MR", or wants to mark an MR as being
-  reviewed by them.
+  Post a short “claimed for review” note on a pull/merge request so other
+  developers do not double-work the same review. Works on GitHub, GitLab,
+  and Gitea (and Forgejo / Codeberg). Accepts a PR/MR URL or number
+  (e.g. /claim-mr https://github.com/acme/app/pull/12, /claim-mr 54,
+  /claim-mr !54). Use when the user runs /claim-mr, or says "claim this
+  MR", "claim this PR", "claim MR", "I'm taking this review", "avoid
+  double work on MR", or wants to mark a review as theirs.
 ---
 
-# Claim MR
+# Claim PR / MR
 
-Post a single **claim note** on a GitLab merge request so teammates do not
-start a parallel full review.
+Post a single **claim note** on a pull request or merge request so
+teammates do not start a parallel full review.
+
+Hosts: **GitHub**, **GitLab**, **Gitea** (same API as Forgejo / Codeberg).
+Detect the host from the URL or `git remote`; do not assume GitLab.
+
+`$SKILL_DIR` is the folder that contains this `SKILL.md`.
 
 ## Parse the target
 
-From the user message, extract:
+```bash
+node "$SKILL_DIR/scripts/detect-host.mjs" "<user text or URL>"
+```
 
-1. **MR IID** — prefer an explicit number, else parse from URL:
-   - `.../merge_requests/54` → `54`
-   - `!54` → `54`
-2. **Project path** — from the URL when present:
-   - `https://host/group/project/-/merge_requests/54` → `group/project`
-3. If only an IID is given (`/claim-mr 54`):
-   - Prefer `git remote get-url origin`
-     (`git@host:group/project.git` → `group/project`)
-   - Else the project this workspace already uses for GitLab tools
+That prints `provider`, `host`, `owner`, `repo`, `number`, `slug`, `note`.
 
-If neither URL nor IID can be resolved, ask once for the MR URL or number.
+If the user pasted a URL, prefer it. If they only gave `54` / `!54`,
+use `origin`. If `provider` is `unknown` or `unknown-pull`, ask once:
+GitHub, GitLab, or Gitea?
+
+| URL shape | Provider |
+| --- | --- |
+| `…/pull/12` on github.com or `*.ghe.com` | github |
+| `…/-/merge_requests/54` or host contains `gitlab` | gitlab |
+| `…/pulls/12` on gitea / forgejo / codeberg.org | gitea |
 
 ## Note body (default)
-
-Keep it short. Use this unless the user supplied their own text:
 
 ```markdown
 **Claimed for review**
@@ -41,25 +46,70 @@ Keep it short. Use this unless the user supplied their own text:
 I've claimed this MR and am reviewing it now so we avoid duplicate work. Please don't start a parallel full review unless coordinating with me first — happy to take comments/questions while I'm on it.
 ```
 
-## Steps
+Use the user’s text instead if they supplied one.
 
-1. Resolve `project_id` + `merge_request_iid`.
-2. Discover GitLab tools via `search_tool` if schemas are not already known.
-3. Optionally `gitlab__get_merge_request` to confirm the MR is open.
-   If closed/merged: tell the user and **do not** claim unless they insist.
-4. Create the note with `gitlab__create_merge_request_note` (or
-   `gitlab__create_note` with `noteable_type: merge_request`).
-5. Best-effort (do not fail the claim if this errors): add the current
-   GitLab user as a **reviewer** via `gitlab__update_merge_request`
-   `reviewer_ids`. Do not steal the assignee.
-6. If recent notes show **you** already claimed in the last few minutes,
-   skip a second note. If another human claimed actively, **warn** before
-   posting unless they said force.
+## Post the claim
+
+Confirm the PR/MR is **open**. If it is closed/merged, tell the user and
+do not claim unless they insist.
+
+If recent comments show **you** already claimed in the last few minutes,
+skip a second note. If another human claimed actively, **warn** before
+posting unless they said force.
+
+Best-effort: add yourself as a **reviewer**. Do not steal the assignee.
+Do not fail the claim if reviewer assignment errors.
+
+### GitHub
+
+```bash
+gh pr view {number} --repo {slug} --json title,state,url,comments
+gh pr comment {number} --repo {slug} --body "{note}"
+gh pr edit {number} --repo {slug} --add-reviewer "$(gh api user --jq .login)"
+```
+
+Self-hosted GHES: `GH_HOST={host}` or `gh -R {host}/{slug}`.
+
+### GitLab
+
+Use the GitLab MCP (`search_tool` if schemas are not loaded):
+
+1. `gitlab__get_merge_request` — confirm open
+2. `gitlab__create_merge_request_note` (or `gitlab__create_note` with
+   `noteable_type: merge_request`)
+3. Optional: `gitlab__update_merge_request` with your id in
+   `reviewer_ids` (`gitlab__whoami`)
+
+`project_id` is the URL path (`group/project`). Self-hosted GitLab
+(e.g. nova.teachx.ai) uses the same tools when that host is configured.
+
+### Gitea / Forgejo / Codeberg
+
+Prefer `tea` when logged in:
+
+```bash
+tea pulls {number} --repo {slug}
+tea comment {number} --repo {slug} "{note}"
+```
+
+Otherwise REST (token in `GITEA_TOKEN` or `TEA_TOKEN`):
+
+```bash
+curl -sS -X POST \
+  -H "Authorization: token $GITEA_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"body\": $(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$NOTE")}" \
+  "https://{host}/api/v1/repos/{owner}/{repo}/issues/{number}/comments"
+```
+
+Adding a reviewer is best-effort:
+`PUT /api/v1/repos/{owner}/{repo}/pulls/{number}/requested_reviewers`
+with `{"reviewers":["<your-login>"]}`.
 
 ## Report
 
 ```
-Claimed MR !{iid}: {title}
+Claimed {PR|MR} #{number} on {provider}: {title}
 - Note posted (avoid double review)
 - {web_url}
 ```
@@ -67,5 +117,6 @@ Claimed MR !{iid}: {title}
 ## Do not
 
 - Start a full code review unless the user also asked to review
-- Force-push, merge, approve, or change MR state
+- Force-push, merge, approve, or change PR/MR state
 - Spam a second claim note
+- Assume every repo is GitLab

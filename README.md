@@ -5,7 +5,7 @@ Agent skills I reuse across Claude Code and Grok.
 | Skill | Invoke | What it does |
 | --- | --- | --- |
 | [`fake-no-more`](fake-no-more/) | `/fake-no-more` | Verify factual claims against primary sources and mark every claim with where it came from. |
-| [`claim-mr`](claim-mr/) | `/claim-mr` | Post a short “claimed for review” note on a GitLab MR so nobody double-starts the same review. |
+| [`claim-mr`](claim-mr/) | `/claim-mr` | Post a short “claimed for review” note on a GitHub, GitLab, or Gitea PR/MR so nobody double-starts the same review. |
 | [`claim-fix-ticket`](claim-fix-ticket/) | `/claim-fix-ticket` | Claim a GitLab issue, record a highlighted **before** UI video, implement, run gates, record the same region **after**. |
 | [`ticket-demo-video`](ticket-demo-video/) | `/ticket-demo-video` | Spoken Eve + live UI walkthrough, length = the explanation. Attach the mp4 to the MR; do not commit it. |
 
