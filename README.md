@@ -57,5 +57,9 @@ commit `*.mp4` into product repos. `claim-fix-ticket` and
 `ticket-demo-video` both say to `gitlab__upload_markdown` and paste the
 returned markdown into the merge request body.
 
-Authenticated UI recordings need `DEMO_EMAIL` and `DEMO_PASSWORD` in
-the environment. There is no product-specific default user.
+Authenticated UI recordings are **per project**. On first run the
+agent scans the repo, suggests a sign-in method, and asks you for a
+temporary/fake account (or a Playwright session file). That is written
+to gitignored `docs/review-impact/demo-auth.json`. There is no
+built-in product user. Env `DEMO_EMAIL` + `DEMO_PASSWORD` still works
+if you already have them.

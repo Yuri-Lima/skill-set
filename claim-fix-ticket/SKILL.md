@@ -28,9 +28,31 @@ Resolve from the workspace, then fall back:
 | Need | How to resolve |
 | --- | --- |
 | GitLab project | `git remote get-url origin` → `group/project` |
-| Demo login | Required env: `DEMO_EMAIL` and `DEMO_PASSWORD`. Do not invent or hard-code a product user. |
+| Demo login | First run: scan + ask (see Auth bootstrap). Never invent a product user. |
 | Quality gates | Project lint / typecheck / test commands (Nx, uv, etc.) |
 | Demo URLs | `PLAYWRIGHT_BASE_URL`, `MAILPIT_URL` from the local stack |
+
+## 0. Auth bootstrap (blocking, first run in this repo)
+
+UI recordings cannot start until sign-in is configured for **this**
+project.
+
+1. `node "$SKILL_DIR/../ticket-demo-video/scripts/resolve-demo-auth.mjs" --scan`
+2. Show the scan (suggested method, login routes, providers, demo-user
+   docs).
+3. Ask the user which method to use: `password`, `storage_state`, or
+   `none` (public route).
+4. Ask for a **temporary or fake** account, or a Playwright
+   `storageState` path. Do not invent credentials. Do not copy a user
+   from another product.
+5. Write gitignored `docs/review-impact/demo-auth.json`. Env
+   `DEMO_EMAIL` + `DEMO_PASSWORD` is an alternative if they already
+   export those.
+6. Stop if they refuse — you cannot record an authenticated flow
+   without this.
+
+Reuse the file on later runs in the same repo. Re-ask only if login
+fails.
 
 ## 1. Claim
 
@@ -75,8 +97,6 @@ Record the wrong behavior **before any code change**.
 
 ```bash
 export PLAYWRIGHT_BASE_URL=http://localhost:3000
-export DEMO_EMAIL=...
-export DEMO_PASSWORD=...
 export MAILPIT_URL=http://127.0.0.1:54324   # if the flow uses inbox links
 node docs/review-impact/<iid>-<slug>/record-before.mjs
 ffmpeg -y -i docs/review-impact/<iid>-<slug>/before.webm \
@@ -160,3 +180,4 @@ frame. Upload both clips onto the MR — do not commit them.
 - Push or merge unless the user asks
 - Commit scratch webms or demo mp4s
 - Publish a clip whose badge says `(region not found)`
+- Invent or hard-code a product login. Ask, then persist what they gave you.

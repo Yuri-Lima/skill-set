@@ -8,6 +8,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import { requireDemoAuth } from './resolve-demo-auth.mjs';
+
 export async function loadChromium() {
   try {
     return (await import('playwright')).chromium;
@@ -133,28 +135,54 @@ export async function typeHuman(page, locator, text) {
   await locator.pressSequentially(text, { delay: 95 });
 }
 
-export async function login(browser, nextPath) {
-  const email = process.env.DEMO_EMAIL;
-  const password = process.env.DEMO_PASSWORD;
-  if (!email || !password) {
+function submitPattern(auth) {
+  const raw = auth.submitName ?? /sign in|log in|entrar/i;
+  if (raw instanceof RegExp) return raw;
+  const text = String(raw);
+  const match = text.match(/^\/(.+)\/([a-z]*)$/i);
+  return match ? new RegExp(match[1], match[2]) : new RegExp(text, 'i');
+}
+
+export async function login(browser, nextPath = '/') {
+  const auth = requireDemoAuth();
+  if (auth.method === 'none') {
+    return { cookies: [], origins: [] };
+  }
+  if (auth.method === 'storage_state') {
+    const file = auth.storageStatePath;
+    if (!file || !fs.existsSync(file)) {
+      throw new Error(
+        'demo-auth method=storage_state but storageStatePath is missing. Ask the user for a Playwright storageState JSON or pick another method.',
+      );
+    }
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+  }
+  if (auth.method !== 'password') {
     throw new Error(
-      'Set DEMO_EMAIL and DEMO_PASSWORD for the demo user. This skill has no built-in credentials.',
+      `Unsupported demo-auth method "${auth.method}". Ask the user to pick password, storage_state, or none.`,
+    );
+  }
+  if (!auth.email || !auth.password) {
+    throw new Error(
+      'demo-auth method=password needs email and password. Ask the user for a temporary/fake account.',
     );
   }
   const base = demoBaseUrl();
+  const loginPath = auth.loginPath ?? '/login';
+  const next = encodeURIComponent(nextPath);
   const context = await browser.newContext({
     viewport: { width: 1440, height: 900 },
     colorScheme: 'light',
   });
   const page = await context.newPage();
   page.setDefaultTimeout(60_000);
-  await page.goto(`${base}/login?next=${nextPath}`, {
+  await page.goto(`${base}${loginPath}?next=${next}`, {
     waitUntil: 'domcontentloaded',
   });
-  await page.locator('#email').fill(email);
-  await page.locator('#password').fill(password);
-  await page.getByRole('button', { name: /sign in/i }).click();
-  await page.waitForURL((url) => !url.pathname.includes('/login'), {
+  await page.locator(auth.emailSelector ?? '#email').fill(auth.email);
+  await page.locator(auth.passwordSelector ?? '#password').fill(auth.password);
+  await page.getByRole('button', { name: submitPattern(auth) }).click();
+  await page.waitForURL((url) => !url.pathname.includes(loginPath), {
     timeout: 45_000,
   });
   const state = await context.storageState();

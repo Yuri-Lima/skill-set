@@ -1,0 +1,9 @@
+{
+  "method": "password",
+  "loginPath": "/login",
+  "email": "temporary-demo@example.test",
+  "password": "replace-me",
+  "emailSelector": "#email",
+  "passwordSelector": "#password",
+  "submitName": "sign in"
+}

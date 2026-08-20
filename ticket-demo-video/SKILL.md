@@ -21,6 +21,29 @@ Target look: full-frame product UI being operated like a human; Eve is a
 on important keywords she **raises her arm and points** at the control
 the cursor is on. Her voice is the only audio.
 
+## 0. Auth bootstrap (blocking, first run in this repo)
+
+Do this **before** recording. If sign-in is not configured, **stop** —
+the skill cannot continue.
+
+1. Run `node "$SKILL_DIR/scripts/resolve-demo-auth.mjs" --scan`.
+2. Show the user what you found (login routes, auth providers, demo-user
+   docs) and the **suggested** method.
+3. Ask which method they want:
+   - `password` — email + password on the app’s login page
+   - `storage_state` — they already have a Playwright session JSON
+   - `none` — the route is public; no sign-in
+4. Ask for **temporary or fake** credentials (or a session file path).
+   Do not invent a product user. Do not reuse credentials from another
+   repo. Prefer a disposable account.
+5. Write gitignored `docs/review-impact/demo-auth.json` (see
+   `$SKILL_DIR/demo-auth.example.json`). Env `DEMO_EMAIL` +
+   `DEMO_PASSWORD` also works if they already have those set.
+6. Only then call `login()`. Later runs in the same repo reuse that
+   file; do not re-ask unless login fails.
+
+`login()` throws `AUTH_NOT_CONFIGURED` if step 5 never happened.
+
 ## Inputs (resolve before generating)
 
 1. Ticket number + one sentence of what shipped
@@ -146,8 +169,9 @@ bash "$SKILL_DIR/scripts/compose-studio.sh" \
 
 Resolve `PLAYWRIGHT_BASE_URL` from the local stack. Prefer host
 localhost when auth emails use `localhost` in `redirect_to`.
-Authenticated recordings require `DEMO_EMAIL` and `DEMO_PASSWORD` in
-the environment. The helper throws if either is missing.
+Sign-in uses `docs/review-impact/demo-auth.json` or `DEMO_EMAIL` +
+`DEMO_PASSWORD` (see Auth bootstrap). Selectors default to `#email` /
+`#password` / a Sign in button and can be overridden in that file.
 
 Helpers: `injectCursor`, `clickHuman`, `typeHuman`, `login`,
 `recordTicket` in `$SKILL_DIR/scripts/record-live-ui.mjs`. Write the
