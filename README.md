@@ -1,6 +1,6 @@
 # skill-set
 
-Agent skills I reuse across Claude Code and Grok.
+Agent skills I reuse across Claude Code, Cursor, and Grok.
 
 | Skill | Invoke | What it does |
 | --- | --- | --- |
@@ -34,34 +34,48 @@ not point.
 
 ## Installing
 
-Copy the skill folder into the agent’s skills directory.
+One script writes every skill into the three agent homes:
 
-**Grok**
+```bash
+curl -fsSL https://raw.githubusercontent.com/Yuri-Lima/skill-set/main/install.sh \
+  | bash -s -- --global
+```
+
+Or clone and run it:
 
 ```bash
 git clone https://github.com/Yuri-Lima/skill-set.git
-cp -R skill-set/claim-mr ~/.grok/skills/
-cp -R skill-set/claim-fix-ticket ~/.grok/skills/
-cp -R skill-set/ticket-demo-video ~/.grok/skills/
-cp -R skill-set/explain-implementation-video ~/.grok/skills/
+cd skill-set
+./install.sh --global
 ```
 
-**Claude Code**
+| Flag | Where it copies |
+| --- | --- |
+| `--global` (default) | `~/.grok/skills`, `~/.claude/skills`, `~/.cursor/skills` |
+| `--project` | this repo’s `.grok/skills`, `.claude/skills`, `.cursor/skills`, `.agents/skills` |
+| `--skill NAME` | only that skill (repeatable) |
+| `--update` | `git pull` the source, then recopy |
+| `--list` | print skill names and exit |
 
 ```bash
-git clone https://github.com/Yuri-Lima/skill-set.git
-cp -R skill-set/claim-mr ~/.claude/skills/
-cp -R skill-set/claim-fix-ticket ~/.claude/skills/
-cp -R skill-set/ticket-demo-video ~/.claude/skills/
-cp -R skill-set/explain-implementation-video ~/.claude/skills/
+./install.sh --skill ticket-demo-video --skill explain-implementation-video --global
+./install.sh --update --global
+./install.sh --project
 ```
 
-Or copy into a project’s `.grok/skills/` / `.claude/skills/` so only
-that repo sees them.
+Claude and Cursor can also use the skills CLI (no Grok target):
+
+```bash
+npx skills add Yuri-Lima/skill-set -g -a claude-code -a cursor
+```
+
+Grok already scans those Claude/Cursor folders. `--global` still writes
+`~/.grok/skills` so Grok keeps them if compat is off.
 
 Then invoke by slash command (`/claim-mr`, `/claim-fix-ticket`,
 `/ticket-demo-video`, `/explain-implementation-video`) or let the
-`description` frontmatter trigger.
+`description` frontmatter trigger. Start a new session (or reload
+skills) after install.
 
 ## Demo videos
 
