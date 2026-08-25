@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>decision studio</title>
+    <style>
+      :root { --card: #ffffff; --muted: #64748b; --ink: #0f172a; --good: #047857; --hot: #be123c; }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body { width: 1280px; height: 720px; overflow: hidden; font-family: ui-sans-serif, system-ui, sans-serif; color: #fff; }
+      body {
+        background:
+          radial-gradient(900px 480px at 18% 40%, #1e293b 0%, transparent 70%),
+          linear-gradient(180deg, #111827 0%, #0b1220 100%);
+      }
+      .stage { position: absolute; left: 48px; top: 48px; width: 640px; display: flex; flex-direction: column; gap: 14px; }
+      .kicker { font-size: 13px; letter-spacing: 0.14em; text-transform: uppercase; color: #94a3b8; opacity: 0; }
+      .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      .card {
+        background: var(--card); color: var(--ink); border-radius: 14px; padding: 16px 18px 14px;
+        box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28); min-height: 124px; opacity: 0; transform: translateY(10px);
+      }
+      .label { color: var(--muted); font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+      .value { margin-top: 8px; font-size: 28px; font-weight: 650; letter-spacing: -0.03em; }
+      .value.up { color: var(--good); }
+      .value.hot { color: var(--hot); }
+      .method { margin-top: 8px; font-size: 13px; color: var(--muted); min-height: 18px; }
+      .chips { display: flex; gap: 8px; opacity: 0; flex-wrap: wrap; }
+      .chip {
+        font-size: 16px; font-weight: 700; letter-spacing: 0.06em; padding: 6px 12px; border-radius: 8px;
+        background: rgba(255,255,255,0.08); color: #e2e8f0; border: 1px solid rgba(148,163,184,0.35);
+      }
+      .chip.on { background: #0f766e; border-color: #14b8a6; }
+      .chip.strike { text-decoration: line-through; color: #fda4af; background: rgba(127,29,29,0.45); border-color: #fb7185; }
+      .footer {
+        background: rgba(15, 23, 42, 0.72); border: 1px solid rgba(148, 163, 184, 0.25);
+        border-radius: 12px; padding: 12px 14px; font-size: 15px; color: #e2e8f0; opacity: 0; min-height: 48px;
+      }
+      .on { opacity: 1; transform: none; transition: opacity 420ms ease, transform 420ms ease; }
+      .type { display: inline-block; border-right: 2px solid #94a3b8; padding-right: 1px; }
+    </style>
+  </head>
+  <body>
+    <div class="stage">
+      <div class="kicker" id="kicker">TICKET · short title</div>
+      <div class="row">
+        <div class="card" id="cardA">
+          <div class="label" id="labelA">Before</div>
+          <div class="value hot" id="valueA">old identity</div>
+          <div class="method" id="methodA">What was wrong</div>
+        </div>
+        <div class="card" id="cardB">
+          <div class="label" id="labelB">After</div>
+          <div class="value" id="valueB">split</div>
+          <div class="method" id="methodB">What we shipped</div>
+        </div>
+      </div>
+      <div class="chips" id="chips">
+        <span class="chip" id="chipKeep">Keep</span>
+        <span class="chip" id="chipOut">Out</span>
+      </div>
+      <div class="footer" id="footer"></div>
+    </div>
+    <script>
+      const beats = JSON.parse(document.body.dataset.beats || "[]");
+      function show(id) { document.getElementById(id)?.classList.add("on"); }
+      function typeInto(el, text, ms) {
+        if (!el) return;
+        el.textContent = "";
+        el.classList.add("type");
+        const step = Math.max(16, Math.floor(ms / Math.max(text.length, 1)));
+        let i = 0;
+        const t = setInterval(() => {
+          el.textContent = text.slice(0, i);
+          i += 1;
+          if (i > text.length) { clearInterval(t); el.classList.remove("type"); }
+        }, step);
+      }
+      const actions = {
+        kicker: () => show("kicker"),
+        problem: () => { show("cardA"); show("cardB"); },
+        split: () => {
+          document.getElementById("labelA").textContent = "Partner";
+          document.getElementById("valueA").textContent = "admin";
+          document.getElementById("valueA").className = "value up";
+          document.getElementById("methodA").textContent = "Day-to-day login";
+          document.getElementById("labelB").textContent = "PHX only";
+          document.getElementById("valueB").textContent = "superadmin";
+          document.getElementById("methodB").textContent = "New secret after cutover";
+        },
+        keep: () => { show("chips"); document.getElementById("chipKeep")?.classList.add("on"); },
+        out: () => { document.getElementById("chipOut")?.classList.add("strike"); },
+        footer: () => {
+          const el = document.getElementById("footer");
+          show("footer");
+          typeInto(el, "Replace this line per ticket.", 800);
+        },
+      };
+      for (const beat of beats) {
+        window.setTimeout(() => actions[beat.action]?.(), beat.at);
+      }
+    </script>
+  </body>
+</html>

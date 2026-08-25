@@ -15,11 +15,38 @@ description: >-
 One GitLab issue per run. Do not start the next ticket until this one is
 **fixed** (gates green + after video published).
 
-Spoken Eve + PIP walkthroughs stay in `ticket-demo-video`. This skill is
+Spoken Eve + PIP walkthroughs stay in `ticket-demo-video`. Two-act
+decision films stay in `explain-implementation-video`. This skill is
 the **silent before/after pair** that proves the bug, then the fix.
 
-`$SKILL_DIR` is the folder that contains this `SKILL.md` (project
-`.grok/skills/claim-fix-ticket` or `~/.grok/skills/claim-fix-ticket`).
+`$SKILL_DIR` is the folder that contains this `SKILL.md`. Try the
+workspace `.grok/skills/claim-fix-ticket` first, then
+`~/.grok/skills/claim-fix-ticket`. If the first path 404s, use the
+second — do not continue from memory.
+
+Read this file this turn before skipping any step. A prior turn, a
+session summary, or “looks backend-only” is not a waiver.
+
+## Record-or-skip (blocks coding)
+
+For **each** finding the user listed, name the product screen that
+would show the symptom. Empty lists, missing rows, stale next-due,
+wrong totals, and missing badges **are** the UI. Seeding, SQL, a
+clock, or a fixture is setup for the clip — not a skip.
+
+| Decision | When |
+| --- | --- |
+| **Record** | You can name a screen. |
+| **Skip that finding only** | No product screen can show it (migration revision, lockfile, CI yaml). Write one sentence in the report. |
+
+A skip for one finding does not skip the others.
+
+**Do not edit product code** until every Record finding has
+`before.webm`, or you are stopped on §0 waiting for auth. If auth
+is unanswered, stop — do not implement as a fallback.
+
+If the tree is already changed: stash or check out the unfixed
+revision, record before, restore, then after. Late is not a skip.
 
 ## Defaults
 
@@ -48,13 +75,17 @@ project.
 5. Write gitignored `docs/review-impact/demo-auth.json`. Env
    `DEMO_EMAIL` + `DEMO_PASSWORD` is an alternative if they already
    export those.
-6. Stop if they refuse — you cannot record an authenticated flow
-   without this.
+6. Stop if they refuse or have not answered — you cannot record an
+   authenticated flow without this. Do not implement while waiting.
 
 Reuse the file on later runs in the same repo. Re-ask only if login
 fails.
 
 ## 1. Claim
+
+If the user pasted review comments or MR bullets with **no issue
+IID**, skip this section. Still do Record-or-skip, videos, implement,
+and gates. Slug the runners `mr-<iid>-<slug>` (or a short slug).
 
 1. Resolve IID from `#213`, `213`, or the issue URL.
 2. `gitlab__get_issue` — skip if closed/merged unless the user insists.
@@ -76,11 +107,13 @@ WIP: at most one in-progress issue per person.
 
 - Branch from updated default branch: `feat/<iid>-<slug>` or
   `fix/<iid>-<slug>`.
-- Start the local stack if the ticket is UI-reproducible.
+- Start the local stack for every Record finding.
 
-## 3. Before video (when the bug is visible in the UI)
+## 3. Before video
 
-Record the wrong behavior **before any code change**.
+Record the wrong behavior **before any code change**. Skip a finding
+only via Record-or-skip — not because it is “backend,” needs seed
+data, is a review comment, or was already implemented.
 
 1. Write a gitignored runner
    `docs/review-impact/<iid>-<slug>/record-before.mjs`.
@@ -111,7 +144,6 @@ description.
 4. Extract a frame ~1s before the end. If the badge says
    `(region not found)` or the outline is on the wrong widget, fix the
    locator and re-record. Do not publish a miss.
-5. If it is not UI-reproducible, say so and skip the clip.
 
 ### Highlight rules
 
@@ -163,9 +195,9 @@ frame. Upload both clips onto the MR — do not commit them.
 
 ## 7. Report
 
-- Issue IID + title + URL
-- Clickable before/after (MR description uploads, not git)
-- What region was boxed
+- Issue IID + title + URL (or MR + review bullets if no IID)
+- For each finding: boxed region + clickable before/after, **or** the
+  one-sentence Record-or-skip reason
 - Gates run and outcome
 - Branch name
 - Then stop, or continue to the next IID **only if** the user listed
@@ -175,7 +207,10 @@ frame. Upload both clips onto the MR — do not commit them.
 
 - Implement several tickets in one mixed branch unless the user asked
   to ship a reviewed batch in one MR
-- Skip the before video when the bug is visible in the UI
+- Skip a before video when you can name a screen
+- Inherit a skip from a previous turn or session summary
+- Implement while auth is unanswered
+- Treat seed, SQL, or fixture setup as “not UI”
 - Treat a screenshot as verification
 - Push or merge unless the user asks
 - Commit scratch webms or demo mp4s
