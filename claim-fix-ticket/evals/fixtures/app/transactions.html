@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Transactions</title>
+  </head>
+  <body>
+    <h1>Transactions</h1>
+    <table>
+      <thead>
+        <tr>
+          <th>Account</th>
+          <th>Next due</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr data-issue-row="loan-1">
+          <td>Loan 1</td>
+          <td data-next-due>12 Aug</td>
+        </tr>
+      </tbody>
+    </table>
+    <p>After repayment the cell should read 12 Sep. It still says 12 Aug.</p>
+  </body>
+</html>

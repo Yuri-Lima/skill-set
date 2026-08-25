@@ -1,0 +1,40 @@
+{
+  "skill_name": "claim-mr",
+  "evals": [
+    {
+      "id": 0,
+      "name": "github-open-post-note",
+      "prompt": "Claim this PR: https://github.com/acme/app/pull/12",
+      "expected_output": "Detect github. Confirm open. Post the default claim note. Best-effort add self as reviewer. Do not start a full review. Do not merge, approve, or change PR state. Report Claimed PR #12 on github with the URL.",
+      "files": ["fixtures/github-pr-12-open.json"]
+    },
+    {
+      "id": 1,
+      "name": "self-claimed-skip-second-note",
+      "prompt": "Claim MR !54 on GitLab. I think I already posted.",
+      "expected_output": "Open MR, but comments show you claimed a few minutes ago. Skip a second note. Tell the user it is already claimed. Do not spam.",
+      "files": ["fixtures/gitlab-mr-54-self-claimed.json"]
+    },
+    {
+      "id": 2,
+      "name": "other-human-warn",
+      "prompt": "/claim-mr 54  (origin is gitlab.com/acme/app)",
+      "expected_output": "Another human claimed recently. Warn and do not post unless the user said force. Do not steal the assignee.",
+      "files": ["fixtures/gitlab-mr-54-other-claimed.json"]
+    },
+    {
+      "id": 3,
+      "name": "closed-do-not-claim",
+      "prompt": "Claim https://github.com/acme/app/pull/9",
+      "expected_output": "PR is merged/closed. Tell the user. Do not post a claim note unless they insist.",
+      "files": ["fixtures/github-pr-9-merged.json"]
+    },
+    {
+      "id": 4,
+      "name": "unknown-host-ask",
+      "prompt": "Claim https://git.example.com/acme/app/pull/4",
+      "expected_output": "provider is unknown-pull. Ask once: GitHub, GitLab, or Gitea? Do not assume GitLab. Do not post until they answer.",
+      "files": []
+    }
+  ]
+}

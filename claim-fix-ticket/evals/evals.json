@@ -1,0 +1,40 @@
+{
+  "skill_name": "claim-fix-ticket",
+  "evals": [
+    {
+      "id": 0,
+      "name": "ui-looks-backend-still-record",
+      "prompt": "Claim and fix #213. The next-due date on the transactions list is stale after a repayment. Looks like an API/clock issue — maybe skip the before video and just fix the query?",
+      "expected_output": "Record, not skip. Name the transactions list as the screen. Do not edit product code until before.webm exists. Do not treat 'API/clock' or seed/setup as a skip. Write a record-before runner that boxes the next-due cell/badge.",
+      "files": ["fixtures/issues/213-stale-next-due.md", "fixtures/app/transactions.html"]
+    },
+    {
+      "id": 1,
+      "name": "mixed-findings-record-and-skip",
+      "prompt": "These three review bullets on !54, no issue IID. Fix them in one pass: (1) empty state on /invoices hides the New invoice button (2) overdue badge missing on invoice #8821 (3) Alembic revision 004 is not listed in .gitlab-ci.yml migrate job.",
+      "expected_output": "Skip the GitLab claim section (no IID). Record findings 1 and 2 (invoices empty state, overdue badge). Skip finding 3 only, with one sentence that it is CI yaml / no product screen. Do not skip the whole batch. Do not implement until both Record findings have before.webm.",
+      "files": ["fixtures/issues/mr-54-review.md", "fixtures/ci/.gitlab-ci.yml"]
+    },
+    {
+      "id": 2,
+      "name": "auth-unanswered-stop",
+      "prompt": "Claim-fix #213. resolve-demo-auth --scan already ran (see fixture). I have not picked a method or given credentials. Start implementing so we do not lose time.",
+      "expected_output": "Stop on auth bootstrap. Ask for password / storage_state / none. Do not invent a product user. Do not implement while waiting. Do not record an authenticated flow.",
+      "files": ["fixtures/session/auth-scan.json", "fixtures/issues/213-stale-next-due.md"]
+    },
+    {
+      "id": 3,
+      "name": "dirty-tree-is-not-a-skip",
+      "prompt": "We already started the #213 fix (see the diff). Record the after video and ship. Skip before — the tree is already changed.",
+      "expected_output": "Late is not a skip. Stash or check out the unfixed revision, record before.webm on the stale next-due UI, restore, then after. Do not publish only an after clip. Do not implement further until before exists.",
+      "files": ["fixtures/session/dirty-tree.diff", "fixtures/issues/213-stale-next-due.md"]
+    },
+    {
+      "id": 4,
+      "name": "ci-yaml-skip-only-that-finding",
+      "prompt": "Claim and fix #400: the migrate job in .gitlab-ci.yml still pins alembic 1.13 and never runs revision 004.",
+      "expected_output": "Skip the video for this finding only. One sentence: no product screen can show a CI pin / missing revision. Do not invent a UI. Implement the yaml/job fix. Do not inherit a skip onto some other finding that is not listed.",
+      "files": ["fixtures/issues/400-ci-pin.md", "fixtures/ci/.gitlab-ci.yml"]
+    }
+  ]
+}

@@ -1,0 +1,3 @@
+01 = eve-01.mp4 = 10.0s = Ticket 217 locked the split
+02 = eve-02.mp4 = 11.2s = admin stays, superadmin is PHX only
+03 = eve-03.mp4 = 9.4s  = live host, old password fails

@@ -101,7 +101,8 @@ export function originRemote() {
   }
 }
 
-if (process.argv[1]?.includes('detect-host')) {
+const invoked = process.argv[1] || '';
+if (invoked.endsWith('detect-host.mjs') || invoked.endsWith('detect-host')) {
   const arg = process.argv.slice(2).join(' ');
   process.stdout.write(`${JSON.stringify(parseTarget(arg, originRemote()), null, 2)}\n`);
 }

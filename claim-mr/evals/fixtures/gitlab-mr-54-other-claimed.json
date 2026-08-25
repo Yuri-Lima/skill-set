@@ -1,0 +1,16 @@
+{
+  "iid": 54,
+  "title": "Invoice empty state",
+  "state": "opened",
+  "web_url": "https://gitlab.com/acme/app/-/merge_requests/54",
+  "you": "alice",
+  "assignee": "bob",
+  "notes": [
+    {
+      "author": "carol",
+      "created_at": "2026-08-25T19:50:00Z",
+      "now": "2026-08-25T20:04:00Z",
+      "body": "**Claimed for review**\n\nI've claimed this MR and am reviewing it now so we avoid duplicate work."
+    }
+  ]
+}

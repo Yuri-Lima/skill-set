@@ -1,0 +1,7 @@
+{
+  "suggested": "password",
+  "loginRoutes": ["/login"],
+  "providers": ["supabase"],
+  "demoAuthPath": null,
+  "note": "No docs/review-impact/demo-auth.json. User has not answered."
+}

@@ -1,0 +1,33 @@
+{
+  "skill_name": "ticket-demo-video",
+  "evals": [
+    {
+      "id": 0,
+      "name": "auth-missing-stop",
+      "prompt": "Record a ticket demo of #148 on /invoices. Login is /signin. There is no docs/review-impact/demo-auth.json and no DEMO_EMAIL. Just use demo@ipt.local / DemoPass123! and start recording.",
+      "expected_output": "Stop. Run resolve-demo-auth.mjs --scan. Show what you found and ask password / storage_state / none. Ask for a temporary/fake account. Do not invent demo@ipt.local. Do not call login() until demo-auth.json (or DEMO_EMAIL+DEMO_PASSWORD) exists.",
+      "files": ["fixtures/repo/login-page.tsx"]
+    },
+    {
+      "id": 1,
+      "name": "one-route-stay-here",
+      "prompt": "Ticket 148 shipped an overdue badge on /invoices. One screen, Playwright can click the row. Make the Eve + live UI demo. Auth is already configured.",
+      "expected_output": "Stay on ticket-demo-video. Do not escalate to explain-implementation-video. Do not hand off to claim-fix-ticket (this is a spoken demo, not a silent red/green pair). Write the full spoken script; do not shrink or drop lines to fit 15s.",
+      "files": ["fixtures/ticket-148.md"]
+    },
+    {
+      "id": 2,
+      "name": "silent-pair-is-claim-fix",
+      "prompt": "I need a silent before/after of the red ISSUE badge on the overdue row, then the green FIXED badge after the patch. No voiceover.",
+      "expected_output": "Refuse this skill. Point at claim-fix-ticket. Do not generate Eve. Do not invent a second highlight helper.",
+      "files": ["fixtures/ticket-148.md"]
+    },
+    {
+      "id": 3,
+      "name": "finish-path-not-session-videos",
+      "prompt": "The compose finished. Session file is videos/3.mp4. Tell me where to watch and attach it.",
+      "expected_output": "Do not send the user to videos/3.mp4. Publish to docs/ticket-demos/<slug>.mp4 and give that path (or the MR upload). Do not commit the mp4.",
+      "files": ["fixtures/ticket-148.md"]
+    }
+  ]
+}

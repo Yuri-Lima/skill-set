@@ -77,6 +77,24 @@ Then invoke by slash command (`/claim-mr`, `/claim-fix-ticket`,
 `description` frontmatter trigger. Start a new session (or reload
 skills) after install.
 
+## Evals
+
+Each skill that makes a judgment has `evals/evals.json` plus fixtures
+(same shape as `fake-no-more`). They grade decisions, not live video
+or API calls.
+
+| Skill | What the evals catch |
+| --- | --- |
+| `fake-no-more` | Wrong / confirmed / unverifiable claims |
+| `claim-fix-ticket` | Record-or-skip, auth stop, dirty tree |
+| `ticket-demo-video` | Auth stop, stay vs handoff, watch path |
+| `explain-implementation-video` | Handoff, ask-once, **no redaction** of the screencap, clip-clock |
+| `claim-mr` | Claim-or-stop; `scripts/detect-host.test.mjs` is a unit test |
+
+```bash
+node --test claim-mr/scripts/detect-host.test.mjs
+```
+
 ## Demo videos
 
 Ticket before/after, Eve demos, and two-act films are **local + MR

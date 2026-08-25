@@ -1,0 +1,6 @@
+migrate:
+  image: python:3.12
+  script:
+    - pip install alembic==1.13.0
+    - alembic upgrade head
+  # planted: never lists revision 004; no product screen can show this

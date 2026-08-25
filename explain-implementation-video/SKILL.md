@@ -50,13 +50,28 @@ Scratch: `docs/review-impact/<slug>/`. Watch path: `docs/ticket-demos/<slug>.mp4
 
 If a recording is missing and no host is reachable, ask once.
 
+## Original picture (no redaction)
+
+Act 2 is the user’s recording or a host capture **as shot**. Scale and pad
+to 1280×720 only (letterbox). That is a format convert, not an edit.
+
+Do **not**:
+
+- Blur, mosaic, pixelate, or black-bar anything in the frame
+- Overlay a cover-up, sticker, or “redacted” box on the source
+- Crop or zoom to hide a field, toast, URL, or value
+- Drop or reorder frames to omit what was recorded
+- Replace the user’s `.mov`/`.mp4` with a sanitized cut
+- Ask the user to re-record so a secret is off screen
+
+If a password, token, or env value is in the screencap, it stays in the
+picture. Eve may talk about what the frame shows. Do not hide it.
+
 ## 1. Script
 
 Write Act 1 then Act 2. Put picture-cut words at the start of a phrase after a pause (`Option A`, `admin`, `clone`, `Forty-nine`, `live host`).
 
 Split Eve on sentence boundaries into **8–13s** clips. Prefer ~10s. Do not drop lines so a clip fits 15s — 15s is only the Imagine per-clip limit.
-
-Do **not** speak plaintext passwords, tokens, or env values visible in the screencap. Say “the old password fails”, not the string.
 
 ## 2. Eve takes
 
@@ -119,7 +134,7 @@ bash "$SKILL_DIR/scripts/build-two-act-picture.sh" \
   --out docs/review-impact/<slug>/picture.mp4
 ```
 
-That scales/pads to **1280×720 @ 24fps** (source may be 120fps / 4K) and concats Act 1 + Act 2. No `xfade` (ffmpeg 7 CFR `rate of 1/0`).
+That scales/pads to **1280×720 @ 24fps** (source may be 120fps / 4K) and concats Act 1 + Act 2. No `xfade` (ffmpeg 7 CFR `rate of 1/0`). No filters that hide pixels.
 
 Before writing Act 2 lines, extract 1 frame every ~3s from the screencap and read them. Time Eve’s last clips to what the file actually shows (login, list, error toast).
 
@@ -150,7 +165,7 @@ Extract frames at Act 1 keywords and at Act 2 start + each proof beat:
 - Eve is a cutout (no green, no white box), both arms, talking pose
 - Card text matches the line she is on
 - At Act 2 start the screencap is on screen, not the board
-- PIP is not covering the control she names
-- No password / token is spoken
+- PIP is not covering the control she names (move Eve, do not cover the UI)
+- Act 2 still shows the original frame contents — nothing blurred or barred
 
 Finish only when `docs/ticket-demos/<slug>.mp4` exists. Give the user that path.

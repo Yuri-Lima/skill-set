@@ -1,0 +1,8 @@
+diff --git a/apps/web/src/components/transactions/NextDue.tsx b/apps/web/src/components/transactions/NextDue.tsx
+index 1111111..2222222 100644
+--- a/apps/web/src/components/transactions/NextDue.tsx
++++ b/apps/web/src/components/transactions/NextDue.tsx
+@@ -10,7 +10,7 @@ export function NextDue({ row }: { row: Row }) {
+-  return <span>{row.nextDue}</span>;
++  return <span>{row.nextDue ?? row.refreshedNextDue}</span>;
+ }

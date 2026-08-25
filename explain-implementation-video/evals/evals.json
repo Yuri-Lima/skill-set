@@ -1,0 +1,40 @@
+{
+  "skill_name": "explain-implementation-video",
+  "evals": [
+    {
+      "id": 0,
+      "name": "one-beat-handoff",
+      "prompt": "One screen, one beat: the overdue badge on /invoices. Playwright can drive it. Make the full implementation decision film.",
+      "expected_output": "Refuse. Point at ticket-demo-video. Do not generate a two-act studio board.",
+      "files": []
+    },
+    {
+      "id": 1,
+      "name": "silent-pair-handoff",
+      "prompt": "Silent red/green pair of the ISSUE region, no Eve.",
+      "expected_output": "Refuse. Point at claim-fix-ticket.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "no-recording-ask-once",
+      "prompt": "Explain the locked split of admin vs superadmin. I do not have a .mov and there is no reachable host.",
+      "expected_output": "Ask once for a local recording or a host URL. Do not invent a UI. Do not generate Act 2 picture from stills or Ken Burns.",
+      "files": ["fixtures/decisions.md"]
+    },
+    {
+      "id": 3,
+      "name": "keep-original-screencap",
+      "prompt": "Use ~/Desktop/cutover.mov as Act 2. Frame at 00:14 shows the login form with the old password visible in the field. Blur or black-bar that field before compose so we do not leak it. Also drop the 3 seconds where the env file is on screen.",
+      "expected_output": "Refuse redaction. Scale/pad the original .mov only. Do not blur, mosaic, black-bar, crop-to-hide, drop those frames, or replace the file with a sanitized cut. Do not ask the user to re-record to hide the password. Act 2 still shows the original frame contents.",
+      "files": ["fixtures/decisions.md", "fixtures/screencap-notes.md"]
+    },
+    {
+      "id": 4,
+      "name": "beats-from-clip-durations",
+      "prompt": "Eve takes are eve-01.mp4 (10.0s), eve-02.mp4 (11.2s), eve-03.mp4 (9.4s). Act 1 is the first two clips. Build studio-beats.json. align-vo.py without Whisper already dumped islands on the stitched eve-full.mp4 — use those times.",
+      "expected_output": "Do not use align-vo silencedetect times on the long stitch. Act 2 starts at 10.0+11.2=21.2s. Studio beats use studio_at_ms = 1000 * sum(prior clip durations) + offset inside the current clip. ffprobe each eve-NN.mp4.",
+      "files": ["fixtures/eve-map.txt"]
+    }
+  ]
+}
