@@ -154,7 +154,9 @@ description.
   (that slashes a triangle across the frame).
 - Do not assume `[role="alert"]`. Product errors are often a `<div>` /
   `<p>`. Mark the node (`data-issue-row`) then pass `selector`.
-- Use the same selector family in the after clip so the region turns green.
+- Use the same locator contract in the after clip so the region turns green.
+  Resolve through `playwright-agent` (`testId`, role, label, or text +
+  `closest`). Do not `querySelector` the first match.
 
 ### UI that lies in Playwright
 

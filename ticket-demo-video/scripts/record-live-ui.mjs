@@ -9,6 +9,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { requireDemoAuth } from './resolve-demo-auth.mjs';
+import { assertResolved, resolveTarget } from '../../playwright-agent/src/index.mjs';
 
 export async function loadChromium() {
   try {
@@ -143,6 +144,18 @@ function submitPattern(auth) {
   return match ? new RegExp(match[1], match[2]) : new RegExp(text, 'i');
 }
 
+function emailTarget(auth) {
+  if (auth.emailTarget) return auth.emailTarget;
+  if (auth.emailLabel) return { by: 'label', name: auth.emailLabel };
+  return { by: 'css', selector: auth.emailSelector ?? '#email' };
+}
+
+function passwordTarget(auth) {
+  if (auth.passwordTarget) return auth.passwordTarget;
+  if (auth.passwordLabel) return { by: 'label', name: auth.passwordLabel };
+  return { by: 'css', selector: auth.passwordSelector ?? '#password' };
+}
+
 export async function login(browser, nextPath = '/') {
   const auth = requireDemoAuth();
   if (auth.method === 'none') {
@@ -179,9 +192,19 @@ export async function login(browser, nextPath = '/') {
   await page.goto(`${base}${loginPath}?next=${next}`, {
     waitUntil: 'domcontentloaded',
   });
-  await page.locator(auth.emailSelector ?? '#email').fill(auth.email);
-  await page.locator(auth.passwordSelector ?? '#password').fill(auth.password);
-  await page.getByRole('button', { name: submitPattern(auth) }).click();
+  const email = await resolveTarget(page, emailTarget(auth));
+  assertResolved(email, 'login email');
+  await email.locator.fill(auth.email);
+  const password = await resolveTarget(page, passwordTarget(auth));
+  assertResolved(password, 'login password');
+  await password.locator.fill(auth.password);
+  const submit = await resolveTarget(page, {
+    by: 'role',
+    role: 'button',
+    name: submitPattern(auth),
+  });
+  assertResolved(submit, 'login submit');
+  await submit.locator.click();
   await page.waitForURL((url) => !url.pathname.includes(loginPath), {
     timeout: 45_000,
   });

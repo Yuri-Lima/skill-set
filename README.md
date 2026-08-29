@@ -10,6 +10,7 @@ Agent skills I reuse across Claude Code, Cursor, and Grok.
 | [`ticket-demo-video`](ticket-demo-video/) | `/ticket-demo-video` | Spoken Eve + live UI walkthrough, length = the explanation. Attach the mp4 to the MR; do not commit it. |
 | [`explain-implementation-video`](explain-implementation-video/) | `/explain-implementation-video` | Two-act film: Eve narrates locked decisions on a studio board, then a product recording proves the result. |
 | [`explain-in-browser`](explain-in-browser/) | `/explain-in-browser` | Mid/long explanations open as a readable HTML page; the terminal only gets a short teaser. |
+| [`playwright-agent`](playwright-agent/) | `/playwright-agent` | Playwright-first browser CLI: locator contracts, strict resolve, journal → spec. Shared by ticket-demo login and claim-fix highlight. |
 
 ```
 skill-set/
@@ -20,6 +21,7 @@ skill-set/
   ticket-demo-video/               SKILL.md + scripts + Eve assets
   explain-implementation-video/    SKILL.md + scripts (two-act board + concat)
   explain-in-browser/              SKILL.md + markdown-to-HTML renderer
+  playwright-agent/                standalone CLI + locator engine (used by the video skills)
 ```
 
 The three video skills are siblings. Install `ticket-demo-video` with the
@@ -77,7 +79,15 @@ Grok already scans those Claude/Cursor folders. `--global` still writes
 
 Then invoke by slash command (`/claim-mr`, `/claim-fix-ticket`,
 `/ticket-demo-video`, `/explain-implementation-video`,
-`/explain-in-browser`) or let the `description` frontmatter trigger.
+`/explain-in-browser`, `/playwright-agent`) or let the `description`
+frontmatter trigger.
+
+`ticket-demo-video` and `claim-fix-ticket` need `playwright-agent`
+installed beside them (`install.sh` pulls that dependency automatically).
+From the package folder: `npm install` then
+`node src/cli.mjs open example.com`. Track official Playwright Test
+Agent prompt changes with
+`node playwright-agent/scripts/check-upstream.mjs --check`.
 Start a new session (or reload skills) after install.
 
 ## Evals

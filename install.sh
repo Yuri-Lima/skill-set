@@ -108,20 +108,41 @@ fi
 SCOPE="${SCOPE:-global}"
 
 declare -a NAMES=()
+skill_deps() {
+  case "$1" in
+    ticket-demo-video) printf '%s\n' playwright-agent ;;
+    claim-fix-ticket) printf '%s\n' playwright-agent ticket-demo-video ;;
+    explain-implementation-video) printf '%s\n' ticket-demo-video ;;
+  esac
+}
+
 if [[ ${#ONLY[@]} -eq 0 ]]; then
   while IFS= read -r name; do
     NAMES+=("$name")
   done < <(skill_names)
 else
-  for name in "${ONLY[@]}"; do
+  declare -A WANT=()
+  add_with_deps() {
+    local name="$1" dep
     if [[ ! -f "$SOURCE/$name/SKILL.md" ]]; then
       echo "unknown skill: $name" >&2
       echo "available:" >&2
       skill_names >&2
       exit 2
     fi
-    NAMES+=("$name")
+    WANT["$name"]=1
+    while IFS= read -r dep; do
+      [[ -n "$dep" ]] || continue
+      [[ -n "${WANT[$dep]:-}" ]] && continue
+      add_with_deps "$dep"
+    done < <(skill_deps "$name")
+  }
+  for name in "${ONLY[@]}"; do
+    add_with_deps "$name"
   done
+  while IFS= read -r name; do
+    [[ -n "${WANT[$name]:-}" ]] && NAMES+=("$name")
+  done < <(skill_names)
 fi
 
 project_root() {
@@ -145,7 +166,7 @@ copy_skill() {
   local src="$1" dest="$2"
   if command -v rsync >/dev/null 2>&1; then
     mkdir -p "$dest"
-    rsync -a --delete --exclude '.git' "$src/" "$dest/"
+    rsync -a --delete --exclude '.git' --exclude 'node_modules' "$src/" "$dest/"
   else
     rm -rf "$dest"
     mkdir -p "$(dirname "$dest")"
