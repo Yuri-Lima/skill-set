@@ -14,6 +14,7 @@ export { HIGHLIGHT, highlightRegion };
  *   kind: 'before' | 'after',
  *   label: string,
  *   selector?: string,
+ *   testId?: string,
  *   text?: string | RegExp,
  *   closest?: string,
  * }} opts
@@ -21,42 +22,14 @@ export { HIGHLIGHT, highlightRegion };
 export async function labelIssueArea(page, opts) {
   const kind = opts.kind ?? 'before';
   const paint = HIGHLIGHT[kind] ?? HIGHLIGHT.before;
-  const textSource =
-    opts.text instanceof RegExp ? opts.text.source : opts.text ?? '';
-  const textFlags = opts.text instanceof RegExp ? opts.text.flags : 'i';
 
-  let outlined = await highlightRegion(page, {
+  const outlined = await highlightRegion(page, {
     kind,
     selector: opts.selector,
+    testId: opts.testId,
     text: opts.text,
     closest: opts.closest,
   });
-
-  if (!outlined && textSource) {
-    outlined = await page.evaluate(
-      ({ source, flags, closest, kind: k }) => {
-        const re = new RegExp(source, flags || 'i');
-        const nodes = [
-          ...document.querySelectorAll(
-            'p, div, span, li, small, strong, [role="alert"], [role="status"]',
-          ),
-        ];
-        const hit = nodes.find((el) => {
-          const t = (el.textContent || '').trim();
-          return re.test(t) && t.length < 240;
-        });
-        if (!(hit instanceof HTMLElement)) return false;
-        const box =
-          (closest && hit.closest(closest) instanceof HTMLElement
-            ? hit.closest(closest)
-            : hit);
-        if (!(box instanceof HTMLElement)) return false;
-        box.setAttribute('data-review-highlight', k);
-        return true;
-      },
-      { source: textSource, flags: textFlags, closest: opts.closest ?? null, kind },
-    );
-  }
 
   await page.evaluate(
     ({ color, label, outlined: hit }) => {

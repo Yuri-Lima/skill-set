@@ -10,6 +10,7 @@ Agent skills I reuse across Claude Code, Cursor, and Grok.
 | [`ticket-demo-video`](ticket-demo-video/) | `/ticket-demo-video` | Spoken Eve + live UI walkthrough, length = the explanation. Attach the mp4 to the MR; do not commit it. |
 | [`explain-implementation-video`](explain-implementation-video/) | `/explain-implementation-video` | Two-act film: Eve narrates locked decisions on a studio board, then a product recording proves the result. |
 | [`explain-in-browser`](explain-in-browser/) | `/explain-in-browser` | Mid/long explanations open as a readable HTML page; the terminal only gets a short teaser. |
+| [`playwright-agent`](playwright-agent/) | `/playwright-agent` | Click and type in a real browser by **name** (Sign in, Email, a test id). Shared by ticket-demo login and claim-fix highlight. [Plain-language guide](playwright-agent/README.md). |
 
 ```
 skill-set/
@@ -20,6 +21,7 @@ skill-set/
   ticket-demo-video/               SKILL.md + scripts + Eve assets
   explain-implementation-video/    SKILL.md + scripts (two-act board + concat)
   explain-in-browser/              SKILL.md + markdown-to-HTML renderer
+  playwright-agent/                standalone CLI + locator engine (used by the video skills)
 ```
 
 The three video skills are siblings. Install `ticket-demo-video` with the
@@ -77,8 +79,43 @@ Grok already scans those Claude/Cursor folders. `--global` still writes
 
 Then invoke by slash command (`/claim-mr`, `/claim-fix-ticket`,
 `/ticket-demo-video`, `/explain-implementation-video`,
-`/explain-in-browser`) or let the `description` frontmatter trigger.
+`/explain-in-browser`, `/playwright-agent`) or let the `description`
+frontmatter trigger.
+
 Start a new session (or reload skills) after install.
+
+## Playwright agent, in plain language
+
+You tell it **which control**, the way you would tell a colleague:
+“the Sign in button”, “the Email field”, “the card that says Next due”.
+A real Chrome window does the click. If it cannot find exactly one
+match, it stops instead of guessing.
+
+That is the opposite of “AI looks at a page map and picks `@e12`”.
+Those numbers go stale the moment the page changes.
+
+`ticket-demo-video` (login) and `claim-fix-ticket` (red/green box)
+already use this engine. The same four jobs:
+
+| Job | What you run or write |
+| --- | --- |
+| Walk a public site | `node playwright-agent/src/cli.mjs open https://example.com --headed` then `click` / `fill` |
+| Sign in for a spoken Eve demo | `emailLabel` / `passwordLabel` in `demo-auth.json` — see [use case 2](playwright-agent/README.md#2-sign-in-for-a-ticket-demo) |
+| Box the bug for a silent before/after | `labelIssueArea(page, { text, closest })` — see [use case 3](playwright-agent/README.md#3-box-the-bug-for-a-beforeafter-video) |
+| Save the clicks as a re-runnable test | `codegen /tmp/flow.spec.ts` — no AI on the next run |
+
+Full install, flags, and copy-paste examples:
+**[playwright-agent/README.md](playwright-agent/README.md)**.
+
+```bash
+cd playwright-agent && npm install && npx playwright install chromium
+node src/cli.mjs open https://demo.playwright.dev/todomvc --headed
+```
+
+`install.sh` copies `playwright-agent` automatically when you install
+`ticket-demo-video` or `claim-fix-ticket`. Track Microsoft’s official
+Test Agent prompts with
+`node playwright-agent/scripts/check-upstream.mjs --check`.
 
 ## Evals
 
@@ -94,6 +131,7 @@ or API calls.
 | `explain-implementation-video` | Handoff, ask-once, **no redaction** of the screencap, clip-clock |
 | `claim-mr` | Claim-or-stop; `scripts/detect-host.test.mjs` is a unit test |
 | `explain-in-browser` | Browser vs terminal; teaser-only TUI; keep-it-here; listen-in-page not `say`; `scripts/render-explanation.test.mjs` |
+| `playwright-agent` | Strict resolve, journal codegen; `cd playwright-agent && npm test` |
 
 ```bash
 node --test claim-mr/scripts/detect-host.test.mjs

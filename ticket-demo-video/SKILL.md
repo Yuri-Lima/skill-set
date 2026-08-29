@@ -200,8 +200,10 @@ board is code-drawn text so button labels stay sharp.
 Resolve `PLAYWRIGHT_BASE_URL` from the local stack. Prefer host
 localhost when auth emails use `localhost` in `redirect_to`.
 Sign-in uses `docs/review-impact/demo-auth.json` or `DEMO_EMAIL` +
-`DEMO_PASSWORD` (see Auth bootstrap). Selectors default to `#email` /
-`#password` / a Sign in button and can be overridden in that file.
+`DEMO_PASSWORD` (see Auth bootstrap). Login locators go through
+`playwright-agent` (`emailLabel` / `passwordLabel`, else `#email` /
+`#password`, plus a Sign in role). Per-ticket `run(page)` should use
+the same resolver — do not invent CSS.
 
 Helpers: `injectCursor`, `clickHuman`, `typeHuman`, `login`,
 `recordTicket` in `$SKILL_DIR/scripts/record-live-ui.mjs`. Write the

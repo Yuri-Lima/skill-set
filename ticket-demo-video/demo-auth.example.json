@@ -3,6 +3,8 @@
   "loginPath": "/login",
   "email": "temporary-demo@example.test",
   "password": "replace-me",
+  "emailLabel": "Email",
+  "passwordLabel": "Password",
   "emailSelector": "#email",
   "passwordSelector": "#password",
   "submitName": "sign in"

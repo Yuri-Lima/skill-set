@@ -1,0 +1,23 @@
+{
+  "name": "playwright-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Playwright-first browser agent: locator contracts, strict resolve, journal codegen.",
+  "type": "module",
+  "bin": {
+    "playwright-agent": "./src/cli.mjs"
+  },
+  "exports": {
+    ".": "./src/index.mjs"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "check-upstream": "node scripts/check-upstream.mjs --check"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "playwright": "^1.55.0"
+  }
+}
