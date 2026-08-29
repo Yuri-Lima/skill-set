@@ -116,12 +116,22 @@ skill_deps() {
   esac
 }
 
+list_has() {
+  local needle="$1" item
+  shift || true
+  [[ $# -eq 0 ]] && return 1
+  for item in "$@"; do
+    [[ "$item" == "$needle" ]] && return 0
+  done
+  return 1
+}
+
 if [[ ${#ONLY[@]} -eq 0 ]]; then
   while IFS= read -r name; do
     NAMES+=("$name")
   done < <(skill_names)
 else
-  declare -A WANT=()
+  declare -a WANT=()
   add_with_deps() {
     local name="$1" dep
     if [[ ! -f "$SOURCE/$name/SKILL.md" ]]; then
@@ -130,10 +140,12 @@ else
       skill_names >&2
       exit 2
     fi
-    WANT["$name"]=1
+    if [[ ${#WANT[@]} -gt 0 ]] && list_has "$name" "${WANT[@]}"; then
+      return 0
+    fi
+    WANT+=("$name")
     while IFS= read -r dep; do
       [[ -n "$dep" ]] || continue
-      [[ -n "${WANT[$dep]:-}" ]] && continue
       add_with_deps "$dep"
     done < <(skill_deps "$name")
   }
@@ -141,7 +153,9 @@ else
     add_with_deps "$name"
   done
   while IFS= read -r name; do
-    [[ -n "${WANT[$name]:-}" ]] && NAMES+=("$name")
+    if [[ ${#WANT[@]} -gt 0 ]] && list_has "$name" "${WANT[@]}"; then
+      NAMES+=("$name")
+    fi
   done < <(skill_names)
 fi
 
