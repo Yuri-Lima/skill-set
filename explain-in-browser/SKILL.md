@@ -26,7 +26,8 @@ Any of:
 - The user ran `/explain-in-browser`
 
 Stay in the terminal for short answers: yes/no, a path, a 5-line
-status, a single command.
+status, a single command. If the user says to keep the answer in
+the terminal or chat, stay there even when the reply would be long.
 
 ## Steps
 

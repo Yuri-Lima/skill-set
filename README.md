@@ -93,7 +93,7 @@ or API calls.
 | `ticket-demo-video` | Auth stop, stay vs handoff, watch path |
 | `explain-implementation-video` | Handoff, ask-once, **no redaction** of the screencap, clip-clock |
 | `claim-mr` | Claim-or-stop; `scripts/detect-host.test.mjs` is a unit test |
-| `explain-in-browser` | Browser vs terminal; teaser-only TUI; `scripts/render-explanation.test.mjs` |
+| `explain-in-browser` | Browser vs terminal; teaser-only TUI; keep-it-here override; `scripts/render-explanation.test.mjs` |
 
 ```bash
 node --test claim-mr/scripts/detect-host.test.mjs
