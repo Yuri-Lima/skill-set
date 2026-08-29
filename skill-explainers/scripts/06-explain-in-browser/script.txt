@@ -1,0 +1,5 @@
+Explain in browser opens a long answer as a readable HTML page.
+
+The terminal only keeps a short teaser: headline, a few bullets, and the file path.
+
+Use it when a walkthrough would be painful to read in the TUI. This skill is general.

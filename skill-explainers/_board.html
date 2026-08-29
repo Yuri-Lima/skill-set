@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>skill explainer</title>
+    <style>
+      :root {
+        --bg: #0f1419;
+        --card: #ffffff;
+        --muted: #64748b;
+        --ink: #0f172a;
+        --good: #047857;
+        --warn: #b45309;
+      }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body {
+        width: 1280px;
+        height: 720px;
+        overflow: hidden;
+        background: var(--bg);
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+        color: white;
+      }
+      body {
+        background:
+          radial-gradient(900px 480px at 18% 40%, #1e293b 0%, transparent 70%),
+          linear-gradient(180deg, #111827 0%, #0b1220 100%);
+      }
+      .stage {
+        position: absolute;
+        left: 48px;
+        top: 56px;
+        width: 680px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      .kicker {
+        font-size: 13px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: #94a3b8;
+        opacity: 0;
+      }
+      .row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+      .card {
+        background: var(--card);
+        color: var(--ink);
+        border-radius: 14px;
+        padding: 18px 18px 16px;
+        box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+        min-height: 168px;
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      .label {
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .value {
+        margin-top: 8px;
+        font-size: 26px;
+        font-weight: 650;
+        letter-spacing: -0.03em;
+        line-height: 1.15;
+      }
+      .value.up { color: var(--good); }
+      .method {
+        margin-top: 10px;
+        font-size: 14px;
+        color: var(--muted);
+        min-height: 18px;
+        line-height: 1.35;
+      }
+      .chips {
+        display: flex;
+        gap: 8px;
+        opacity: 0;
+      }
+      .chip {
+        font-size: 15px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        padding: 6px 12px;
+        border-radius: 8px;
+        background: rgba(255,255,255,0.08);
+        color: #e2e8f0;
+        border: 1px solid rgba(148,163,184,0.35);
+      }
+      .chip.on { background: #0f766e; border-color: #14b8a6; }
+      .chip.job { background: #9a3412; border-color: #fb923c; }
+      .footer {
+        background: rgba(15, 23, 42, 0.72);
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        border-radius: 12px;
+        padding: 12px 14px;
+        font-size: 15px;
+        color: #e2e8f0;
+        opacity: 0;
+        line-height: 1.4;
+      }
+      .on { opacity: 1; transform: none; transition: opacity 420ms ease, transform 420ms ease; }
+    </style>
+  </head>
+  <body>
+    <div class="stage">
+      <div class="kicker" id="kicker"></div>
+      <div class="row">
+        <div class="card" id="cardA">
+          <div class="label" id="labelA">What it does</div>
+          <div class="value up" id="valueA"></div>
+          <div class="method" id="methodA"></div>
+        </div>
+        <div class="card" id="cardB">
+          <div class="label" id="labelB">How it works</div>
+          <div class="value" id="valueB"></div>
+          <div class="method" id="methodB"></div>
+        </div>
+      </div>
+      <div class="chips" id="chips">
+        <span class="chip" id="chipKind"></span>
+      </div>
+      <div class="footer" id="footer"></div>
+    </div>
+    <script>
+      const beats = JSON.parse(document.body.dataset.beats || "[]");
+      const copy = JSON.parse(document.body.dataset.copy || "{}");
+
+      function show(id) {
+        document.getElementById(id)?.classList.add("on");
+      }
+
+      document.getElementById("kicker").textContent = copy.kicker || "";
+      document.getElementById("labelA").textContent = copy.labelA || "What it does";
+      document.getElementById("valueA").textContent = copy.valueA || "";
+      document.getElementById("methodA").textContent = copy.methodA || "";
+      document.getElementById("labelB").textContent = copy.labelB || "How it works";
+      document.getElementById("valueB").textContent = copy.valueB || "";
+      document.getElementById("methodB").textContent = copy.methodB || "";
+      document.getElementById("chipKind").textContent = copy.chip || "GENERAL";
+      document.getElementById("chipKind").classList.add(copy.job ? "job" : "on");
+      document.getElementById("footer").textContent = copy.footer || "";
+
+      const actions = {
+        kicker: () => show("kicker"),
+        cards: () => {
+          show("cardA");
+          show("cardB");
+        },
+        chip: () => show("chips"),
+        footer: () => show("footer"),
+      };
+
+      for (const beat of beats) {
+        window.setTimeout(() => actions[beat.action]?.(), beat.at);
+      }
+    </script>
+  </body>
+</html>

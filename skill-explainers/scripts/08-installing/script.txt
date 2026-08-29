@@ -1,0 +1,5 @@
+Install copies every skill into Grok, Claude, and Cursor with one script.
+
+Run install-sh global from the repo. Pass skill name if you only want one.
+
+Start a new session so they appear. Ticket-demo and claim-fix pull playwright-agent automatically.

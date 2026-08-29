@@ -1,0 +1,5 @@
+Claim M-R posts a short note on a pull request so nobody starts the same review twice.
+
+Paste a GitHub, GitLab, or Gitea URL. The agent writes claimed for review and stops.
+
+If someone else already claimed it, the skill does not double-work. This one is general.

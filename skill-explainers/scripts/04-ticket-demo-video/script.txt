@@ -1,0 +1,5 @@
+Ticket demo video is a spoken walkthrough. Eve talks while a real cursor clicks the product.
+
+Length follows the explanation. It is not a fifteen second cap.
+
+Job wired. It uses my Eve assets and a per-repo demo login. Bring your own login if you reuse it.

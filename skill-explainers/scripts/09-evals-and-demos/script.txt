@@ -1,0 +1,5 @@
+Evals grade decisions, not live video. Fixtures catch a wrong skip or a bad claim.
+
+Demo videos stay local. Do not commit mp4 files. Upload them onto the merge request.
+
+Authenticated recordings ask you for a temporary login per project. There is no built-in user.

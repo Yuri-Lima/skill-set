@@ -22,6 +22,7 @@ skill-set/
   explain-implementation-video/    SKILL.md + scripts (two-act board + concat)
   explain-in-browser/              SKILL.md + markdown-to-HTML renderer
   playwright-agent/                standalone CLI + locator engine (used by the video skills)
+  skill-explainers/                scripts + board for the README Eve videos
 ```
 
 The three video skills are siblings. Install `ticket-demo-video` with the
@@ -36,6 +37,37 @@ other two — they reuse its Eve assets and compose/publish scripts.
 
 Eve is a talking-head cutout (both arms in frame, 72% opacity). She does
 not point.
+
+## Explainer videos
+
+One short Eve + studio-board clip per README section. Watch them locally
+(mp4s are gitignored — do not commit them):
+
+| Section | Job-wired? | Local file |
+| --- | --- | --- |
+| Overview — what this repo is, and what you must change | **Start here** | `docs/ticket-demos/explainer-overview.mp4` |
+| `/fake-no-more` | no — general | `docs/ticket-demos/explainer-fake-no-more.mp4` |
+| `/claim-mr` | no — general | `docs/ticket-demos/explainer-claim-mr.mp4` |
+| `/claim-fix-ticket` | **yes** — GitLab, demo login, Phoenix locators | `docs/ticket-demos/explainer-claim-fix-ticket.mp4` |
+| `/ticket-demo-video` | **yes** — Eve assets, per-repo demo login | `docs/ticket-demos/explainer-ticket-demo-video.mp4` |
+| `/explain-implementation-video` | **yes** — same family as ticket-demo | `docs/ticket-demos/explainer-explain-implementation-video.mp4` |
+| `/explain-in-browser` | no — general | `docs/ticket-demos/explainer-explain-in-browser.mp4` |
+| `/playwright-agent` | CLI is general; login helpers may be job-wired | `docs/ticket-demos/explainer-playwright-agent.mp4` |
+| Installing | no — general | `docs/ticket-demos/explainer-installing.mp4` |
+| Evals and demo videos | no — general | `docs/ticket-demos/explainer-evals-and-demos.mp4` |
+
+**Job-wired** means the skill was built around *this* author’s stack
+(GitLab issue boards, a Phoenix-style product, `demo-auth.json`, Eve
+assets). It will not work on someone else’s repo until you swap those
+hosts, login, and locators. The general skills only need the install
+script.
+
+Rebuild after changing a script:
+
+```bash
+node skill-explainers/build-explainers.mjs
+# or one slug: node skill-explainers/build-explainers.mjs explainer-overview
+```
 
 ## Installing
 
