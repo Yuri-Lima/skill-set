@@ -7,8 +7,10 @@ import {
   escapeHtml,
   markdownToHtml,
   parseArgs,
+  playerScript,
   renderExplanation,
   titleFromMarkdown,
+  wrapPage,
 } from './render-explanation.mjs';
 
 test('inline code, bold, link', () => {
@@ -73,4 +75,17 @@ test('renderExplanation writes html without opening', async () => {
   const html = await readFile(dest, 'utf8');
   assert.match(html, /<title>Hello<\/title>/);
   assert.match(html, /<strong>short<\/strong>/);
+  assert.match(html, /id="play-all"/);
+  assert.match(html, /speechSynthesis/);
+  assert.match(html, /Listen from this paragraph/);
+});
+
+test('wrapPage embeds click-to-play player, no autoplay', () => {
+  const html = wrapPage('T', '<p>Hello</p>');
+  assert.match(html, /id="play-all"/);
+  assert.match(html, /id="pause"/);
+  assert.match(html, /id="stop"/);
+  assert.match(playerScript(), /speakAt\(0\)/);
+  assert.doesNotMatch(playerScript(), /speakAt\(0\);\s*\}\)\(\)/);
+  assert.doesNotMatch(html, /speakAt\(0\);\s*$/m);
 });

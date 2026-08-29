@@ -188,6 +188,110 @@ export function titleFromMarkdown(markdown, fallback = 'Explanation') {
   return (m ? m[1] : fallback).trim() || fallback;
 }
 
+export function playerScript() {
+  return [
+    '(function () {',
+    '  var synth = window.speechSynthesis;',
+    '  var bar = document.getElementById("player");',
+    '  if (!synth || !bar) return;',
+    '  var main = document.querySelector("main");',
+    '  if (!main) return;',
+    '  var nodes = main.querySelectorAll("p, li, blockquote, h2, h3");',
+    '  var items = [];',
+    '  for (var i = 0; i < nodes.length; i++) {',
+    '    var el = nodes[i];',
+    '    if (el.closest("pre, table")) continue;',
+    '    var text = (el.innerText || "").replace(/\\s+/g, " ").trim();',
+    '    if (!text) continue;',
+    '    el.classList.add("speakable");',
+    '    var btn = document.createElement("button");',
+    '    btn.type = "button";',
+    '    btn.className = "speak-one";',
+    '    btn.setAttribute("aria-label", "Listen from this paragraph");',
+    '    btn.textContent = "▶";',
+    '    el.insertBefore(btn, el.firstChild);',
+    '    items.push({ el: el, text: text, btn: btn });',
+    '  }',
+    '  if (!items.length) {',
+    '    bar.hidden = true;',
+    '    return;',
+    '  }',
+    '  var index = 0;',
+    '  var playing = false;',
+    '  var playBtn = document.getElementById("play-all");',
+    '  var pauseBtn = document.getElementById("pause");',
+    '  var stopBtn = document.getElementById("stop");',
+    '  var rateEl = document.getElementById("rate");',
+    '  var statusEl = document.getElementById("player-status");',
+    '  function setStatus(msg) { if (statusEl) statusEl.textContent = msg; }',
+    '  function clearHi() {',
+    '    for (var j = 0; j < items.length; j++) items[j].el.classList.remove("speaking");',
+    '  }',
+    '  function mark(i) {',
+    '    clearHi();',
+    '    if (items[i]) {',
+    '      items[i].el.classList.add("speaking");',
+    '      items[i].el.scrollIntoView({ block: "nearest", behavior: "smooth" });',
+    '    }',
+    '  }',
+    '  function stop() {',
+    '    synth.cancel();',
+    '    playing = false;',
+    '    clearHi();',
+    '    setStatus("Stopped");',
+    '  }',
+    '  function speakAt(start) {',
+    '    synth.cancel();',
+    '    index = start;',
+    '    playing = true;',
+    '    speakNext();',
+    '  }',
+    '  function speakNext() {',
+    '    if (!playing) return;',
+    '    if (index >= items.length) {',
+    '      playing = false;',
+    '      clearHi();',
+    '      setStatus("Done");',
+    '      return;',
+    '    }',
+    '    var item = items[index];',
+    '    mark(index);',
+    '    setStatus("Playing " + (index + 1) + " / " + items.length);',
+    '    var u = new SpeechSynthesisUtterance(item.text);',
+    '    u.rate = rateEl ? parseFloat(rateEl.value) || 1 : 1;',
+    '    u.onend = function () {',
+    '      if (!playing) return;',
+    '      index += 1;',
+    '      speakNext();',
+    '    };',
+    '    u.onerror = function () {',
+    '      if (!playing) return;',
+    '      index += 1;',
+    '      speakNext();',
+    '    };',
+    '    synth.speak(u);',
+    '  }',
+    '  playBtn.addEventListener("click", function () { speakAt(0); });',
+    '  pauseBtn.addEventListener("click", function () {',
+    '    if (!playing) return;',
+    '    if (synth.paused) { synth.resume(); setStatus("Playing"); }',
+    '    else { synth.pause(); setStatus("Paused"); }',
+    '  });',
+    '  stopBtn.addEventListener("click", stop);',
+    '  for (var k = 0; k < items.length; k++) {',
+    '    (function (n) {',
+    '      items[n].btn.addEventListener("click", function (ev) {',
+    '        ev.preventDefault();',
+    '        ev.stopPropagation();',
+    '        speakAt(n);',
+    '      });',
+    '    })(k);',
+    '  }',
+    '  window.addEventListener("beforeunload", stop);',
+    '})();',
+  ].join('\n');
+}
+
 export function wrapPage(title, bodyHtml) {
   const safeTitle = escapeHtml(title);
   return `<!DOCTYPE html>
@@ -206,6 +310,7 @@ export function wrapPage(title, bodyHtml) {
       --rule: #2a2438;
       --code-bg: #1c1828;
       --link: #d8b4fe;
+      --speak: #2a1f3d;
     }
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); }
@@ -221,6 +326,25 @@ export function wrapPage(title, bodyHtml) {
       color: var(--muted);
       font-size: 0.8rem;
     }
+    #player {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem 0.75rem;
+      margin-top: 0.85rem;
+    }
+    #player button, #player select {
+      background: var(--code-bg);
+      color: var(--fg);
+      border: 1px solid var(--rule);
+      border-radius: 6px;
+      padding: 0.35rem 0.7rem;
+      font: inherit;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+    #player button:hover, .speak-one:hover { border-color: var(--accent); }
+    #player-status { color: var(--muted); font-size: 0.8rem; }
     main {
       max-width: 68ch;
       margin: 0 auto;
@@ -260,19 +384,54 @@ export function wrapPage(title, bodyHtml) {
     table { border-collapse: collapse; width: 100%; font-size: 0.95rem; }
     th, td { border: 1px solid var(--rule); padding: 0.45rem 0.65rem; text-align: left; }
     th { background: var(--code-bg); }
+    .speakable { position: relative; padding-left: 1.6rem; border-radius: 6px; }
+    .speakable.speaking { background: var(--speak); outline: 1px solid var(--accent); }
+    .speak-one {
+      position: absolute;
+      left: 0;
+      top: 0.15em;
+      width: 1.3rem;
+      height: 1.3rem;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 0.7rem;
+      line-height: 1.3rem;
+    }
+    .speakable:hover .speak-one, .speakable.speaking .speak-one { color: var(--accent); }
     @media print {
       :root { color-scheme: light; --bg: #fff; --fg: #111; --muted: #444; --rule: #ccc; --code-bg: #f4f4f4; --link: #4a1a7a; }
+      #player, .speak-one { display: none; }
+      .speakable { padding-left: 0; }
     }
   </style>
 </head>
 <body>
   <header>
     <strong>${safeTitle}</strong>
-    <p>Opened by explain-in-browser · easier to read than the terminal</p>
+    <p>Opened by explain-in-browser · read or listen</p>
+    <div id="player">
+      <button type="button" id="play-all">Play all</button>
+      <button type="button" id="pause">Pause</button>
+      <button type="button" id="stop">Stop</button>
+      <label>Rate
+        <select id="rate">
+          <option value="0.9">0.9×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.15">1.15×</option>
+        </select>
+      </label>
+      <span id="player-status">Click Play all, or ▶ on a paragraph</span>
+    </div>
   </header>
   <main>
 ${bodyHtml}
   </main>
+  <script>
+${playerScript()}
+  </script>
 </body>
 </html>
 `;

@@ -35,6 +35,13 @@
       "prompt": "Give me a bit more detail on how restoreFromUpload streams the file, but keep it here.",
       "expected_output": "User asked to keep it in the terminal. Do not render or open HTML. Answer in the TUI even if the reply would otherwise be mid/long.",
       "files": []
+    },
+    {
+      "id": 5,
+      "name": "listen-uses-page-not-say",
+      "prompt": "Explain the restore dialog and let me listen to it.",
+      "expected_output": "Open the HTML. Listening is Play all / per-paragraph ▶ in the page (Web Speech). Do not spawn macOS say or generate audio files.",
+      "files": []
     }
   ]
 }
