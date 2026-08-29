@@ -12,7 +12,9 @@ description: >
 
 The TUI is a bad surface for mid-to-long prose. Write the full
 explanation as markdown, render it, open the HTML, and keep the
-terminal to a teaser.
+terminal to a teaser. The page can be read or listened to: Play
+all, Pause, Stop, and a ▶ on each paragraph (browser voice,
+click to start). Do not also run macOS `say`.
 
 `$SKILL_DIR` is the folder that contains this `SKILL.md`.
 
