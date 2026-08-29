@@ -1,0 +1,186 @@
+[
+  {
+    "slug": "explainer-overview",
+    "dir": "00-overview",
+    "clips": [
+      "Skill-set is a folder of playbooks for coding agents. Type a slash command and the agent follows that skill.",
+      "Most skills are reusable on any repo. Three of them are wired to my job stack.",
+      "Claim-fix, ticket-demo, and explain-implementation need GitLab, demo login, and my product screens. Adjust those before you run them elsewhere."
+    ],
+    "copy": {
+      "kicker": "Skill-set · overview",
+      "valueA": "Playbooks",
+      "methodA": "One folder per slash command",
+      "valueB": "Reusable + job-wired",
+      "methodB": "Three skills assume my stack",
+      "chip": "READ THIS FIRST",
+      "job": true,
+      "footer": "Adjust claim-fix, ticket-demo, and explain-implementation for another repo."
+    }
+  },
+  {
+    "slug": "explainer-fake-no-more",
+    "dir": "01-fake-no-more",
+    "clips": [
+      "Fake no more checks every factual claim against a primary source, not against memory.",
+      "Each claim is marked confirmed, wrong, or unverifiable, with the source next to it.",
+      "Use it when a report states numbers or history. This skill is general — no job login needed."
+    ],
+    "copy": {
+      "kicker": "/fake-no-more · general",
+      "valueA": "Check claims",
+      "methodA": "Against primary sources",
+      "valueB": "Mark each one",
+      "methodB": "Confirmed, wrong, or unverifiable",
+      "chip": "GENERAL",
+      "footer": "/fake-no-more — works on any repo"
+    }
+  },
+  {
+    "slug": "explainer-claim-mr",
+    "dir": "02-claim-mr",
+    "clips": [
+      "Claim M-R posts a short note on a pull request so nobody starts the same review twice.",
+      "Paste a GitHub, GitLab, or Gitea URL. The agent writes claimed for review and stops.",
+      "If someone else already claimed it, the skill does not double-work. This one is general."
+    ],
+    "copy": {
+      "kicker": "/claim-mr · general",
+      "valueA": "Claim a review",
+      "methodA": "Short note on the PR",
+      "valueB": "Stop if taken",
+      "methodB": "GitHub, GitLab, or Gitea",
+      "chip": "GENERAL",
+      "footer": "/claim-mr — paste the URL"
+    }
+  },
+  {
+    "slug": "explainer-claim-fix-ticket",
+    "dir": "03-claim-fix-ticket",
+    "clips": [
+      "Claim-fix ticket is my ticket loop. It claims a GitLab issue and records a red before video of the bug.",
+      "Then it implements the fix and records a green after video of the same region.",
+      "Job wired. It expects GitLab boards, demo login, and Phoenix locators. Swap those for your project."
+    ],
+    "copy": {
+      "kicker": "/claim-fix-ticket · job-wired",
+      "valueA": "Red, then green",
+      "methodA": "Same region, before and after",
+      "valueB": "Claim → fix → gates",
+      "methodB": "GitLab issue, then implement",
+      "chip": "JOB-WIRED",
+      "job": true,
+      "footer": "Swap GitLab, demo login, and locators for your project."
+    }
+  },
+  {
+    "slug": "explainer-ticket-demo-video",
+    "dir": "04-ticket-demo-video",
+    "clips": [
+      "Ticket demo video is a spoken walkthrough. Eve talks while a real cursor clicks the product.",
+      "Length follows the explanation. It is not a fifteen second cap.",
+      "Job wired. It uses my Eve assets and a per-repo demo login. Bring your own login if you reuse it."
+    ],
+    "copy": {
+      "kicker": "/ticket-demo-video · job-wired",
+      "valueA": "Eve + live UI",
+      "methodA": "Spoken walkthrough, real clicks",
+      "valueB": "Length = story",
+      "methodB": "Not a 15 second cap",
+      "chip": "JOB-WIRED",
+      "job": true,
+      "footer": "Bring your own demo login and locators."
+    }
+  },
+  {
+    "slug": "explainer-explain-implementation-video",
+    "dir": "05-explain-implementation-video",
+    "clips": [
+      "Explain implementation is a two-act film. First Eve walks locked decisions on a studio board.",
+      "Then a live recording proves the result. Act two is your screen capture, unredacted.",
+      "Job wired. Same family as ticket demo. Point it at your host or your own recording."
+    ],
+    "copy": {
+      "kicker": "/explain-implementation-video · job-wired",
+      "valueA": "Act 1: decisions",
+      "methodA": "Studio cards, locked choices",
+      "valueB": "Act 2: proof",
+      "methodB": "Your recording, unredacted",
+      "chip": "JOB-WIRED",
+      "job": true,
+      "footer": "Use your host or your own .mov."
+    }
+  },
+  {
+    "slug": "explainer-explain-in-browser",
+    "dir": "06-explain-in-browser",
+    "clips": [
+      "Explain in browser opens a long answer as a readable HTML page.",
+      "The terminal only keeps a short teaser: headline, a few bullets, and the file path.",
+      "Use it when a walkthrough would be painful to read in the TUI. This skill is general."
+    ],
+    "copy": {
+      "kicker": "/explain-in-browser · general",
+      "valueA": "Long answers",
+      "methodA": "Open as an HTML page",
+      "valueB": "Short teaser",
+      "methodB": "Headline, bullets, file path",
+      "chip": "GENERAL",
+      "footer": "/explain-in-browser — TUI stays short"
+    }
+  },
+  {
+    "slug": "explainer-playwright-agent",
+    "dir": "07-playwright-agent",
+    "clips": [
+      "Playwright agent clicks a real browser by name. You say the Sign in button or the Email field.",
+      "If it cannot find exactly one match, it stops. It does not guess a CSS selector.",
+      "Ticket-demo login and claim-fix highlight already use it. The CLI works on any site."
+    ],
+    "copy": {
+      "kicker": "/playwright-agent · general CLI",
+      "valueA": "Click by name",
+      "methodA": "Sign in, Email, test id",
+      "valueB": "Fail closed",
+      "methodB": "Stop if zero or two matches",
+      "chip": "GENERAL",
+      "footer": "CLI is reusable. Login helpers may be job-wired."
+    }
+  },
+  {
+    "slug": "explainer-installing",
+    "dir": "08-installing",
+    "clips": [
+      "Install copies every skill into Grok, Claude, and Cursor with one script.",
+      "Run install-sh global from the repo. Pass skill name if you only want one.",
+      "Start a new session so they appear. Ticket-demo and claim-fix pull playwright-agent automatically."
+    ],
+    "copy": {
+      "kicker": "Installing · README",
+      "valueA": "One script",
+      "methodA": "./install.sh --global",
+      "valueB": "Three homes",
+      "methodB": "Grok, Claude, Cursor",
+      "chip": "GENERAL",
+      "footer": "New session after install. --skill NAME copies one."
+    }
+  },
+  {
+    "slug": "explainer-evals-and-demos",
+    "dir": "09-evals-and-demos",
+    "clips": [
+      "Evals grade decisions, not live video. Fixtures catch a wrong skip or a bad claim.",
+      "Demo videos stay local. Do not commit mp4 files. Upload them onto the merge request.",
+      "Authenticated recordings ask you for a temporary login per project. There is no built-in user."
+    ],
+    "copy": {
+      "kicker": "Evals and demo videos",
+      "valueA": "Evals",
+      "methodA": "Grade decisions, not video",
+      "valueB": "Demos stay local",
+      "methodB": "Upload to the MR — do not commit",
+      "chip": "GENERAL",
+      "footer": "Per-project login. No built-in product user."
+    }
+  }
+]

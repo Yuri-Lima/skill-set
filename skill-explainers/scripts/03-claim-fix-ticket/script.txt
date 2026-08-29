@@ -1,0 +1,5 @@
+Claim-fix ticket is my ticket loop. It claims a GitLab issue and records a red before video of the bug.
+
+Then it implements the fix and records a green after video of the same region.
+
+Job wired. It expects GitLab boards, demo login, and Phoenix locators. Swap those for your project.

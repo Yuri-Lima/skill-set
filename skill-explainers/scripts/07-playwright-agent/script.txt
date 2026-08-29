@@ -1,0 +1,5 @@
+Playwright agent clicks a real browser by name. You say the Sign in button or the Email field.
+
+If it cannot find exactly one match, it stops. It does not guess a CSS selector.
+
+Ticket-demo login and claim-fix highlight already use it. The CLI works on any site.

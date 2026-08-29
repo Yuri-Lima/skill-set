@@ -1,0 +1,5 @@
+Fake no more checks every factual claim against a primary source, not against memory.
+
+Each claim is marked confirmed, wrong, or unverifiable, with the source next to it.
+
+Use it when a report states numbers or history. This skill is general — no job login needed.

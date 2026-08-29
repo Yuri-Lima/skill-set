@@ -1,0 +1,5 @@
+Skill-set is a folder of playbooks for coding agents. Type a slash command and the agent follows that skill.
+
+Most skills are reusable on any repo. Three of them are wired to my job stack.
+
+Claim-fix, ticket-demo, and explain-implementation need GitLab, demo login, and my product screens. Adjust those before you run them elsewhere.
