@@ -28,6 +28,13 @@
       "prompt": "Walk me through every backup queue and then paste the same write-up here so I have it in chat too.",
       "expected_output": "Open the HTML for the walkthrough. Do not also paste the full markdown/HTML body into the TUI. Point at the file path. A short teaser is enough.",
       "files": []
+    },
+    {
+      "id": 4,
+      "name": "keep-it-here-stays-in-terminal",
+      "prompt": "Give me a bit more detail on how restoreFromUpload streams the file, but keep it here.",
+      "expected_output": "User asked to keep it in the terminal. Do not render or open HTML. Answer in the TUI even if the reply would otherwise be mid/long.",
+      "files": []
     }
   ]
 }
