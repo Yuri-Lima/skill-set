@@ -96,6 +96,13 @@ words-per-minute and hope Eve matches.
 Write the full story first. Put each picture-cut word at the start of a
 phrase after a pause so alignment can hear it.
 
+**Spoken terms.** The audience already knows this product. Do not
+expand IPT, API, UI, MR, FMP, CSV, Yahoo, USD, or ETF. On first
+mention only, expand **finance-expert** jargon a general engineer
+would not already know (`T-W-R — that stands for time-weighted
+return`, GIPS, NAV, IRR, T-bill). If you are not sure it is
+expert finance jargon, do not expand it.
+
 ~140 words/min is only a **planning** hint for how long the take might
 run. It is not the picture clock.
 

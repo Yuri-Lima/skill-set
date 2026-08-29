@@ -35,6 +35,13 @@
       "prompt": "Eve takes are eve-01.mp4 (10.0s), eve-02.mp4 (11.2s), eve-03.mp4 (9.4s). Act 1 is the first two clips. Build studio-beats.json. align-vo.py without Whisper already dumped islands on the stitched eve-full.mp4 — use those times.",
       "expected_output": "Do not use align-vo silencedetect times on the long stitch. Act 2 starts at 10.0+11.2=21.2s. Studio beats use studio_at_ms = 1000 * sum(prior clip durations) + offset inside the current clip. ffprobe each eve-NN.mp4.",
       "files": ["fixtures/eve-map.txt"]
+    },
+    {
+      "id": 5,
+      "name": "first-mention-expansions",
+      "prompt": "Write the Eve spoken script (Act 1 + Act 2) for a film about IPT matching Sharpe to the reporting currency. The locked words are IPT, T-bill, FX, USD, TWR, and Sharpe. First clip currently says: Ticket two fifty-five. I-P-T used one U.S. T-bill. A Euro book minus a dollar cash rate mixes F-X into both ratios. T-W-R is the labeled method. Later a clip repeats I-P-T.",
+      "expected_output": "Before any reference_to_video, rewrite script.txt so only finance-expert terms expand on first mention (T-bill — that stands for Treasury bill; T-W-R — that stands for time-weighted return). Do not expand IPT, FX, USD, or Sharpe. Later I-P-T stays short with no product gloss. Do not drop a finance expansion to fit a 15s clip — split after that sentence instead.",
+      "files": ["fixtures/script-abbrev.txt"]
     }
   ]
 }

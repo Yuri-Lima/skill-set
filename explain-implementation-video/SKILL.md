@@ -44,7 +44,7 @@ Scratch: `docs/review-impact/<slug>/`. Watch path: `docs/ticket-demos/<slug>.mp4
 ## Inputs (resolve before generating)
 
 1. Ticket / topic + locked decisions (what is *not* still open)
-2. Spoken script — full story. Do not shrink to fit a time box.
+2. Spoken script — full story, with finance-expert first-mention expansions only (see Script). Do not shrink to fit a time box.
 3. Act 2 picture: a local `.mov`/`.mp4`, **or** a host URL you will record. Do not invent a UI.
 4. Keyword list for Act 1 cards (option names, identifiers, counts)
 
@@ -70,6 +70,37 @@ picture. Eve may talk about what the frame shows. Do not hide it.
 ## 1. Script
 
 Write Act 1 then Act 2. Put picture-cut words at the start of a phrase after a pause (`Option A`, `admin`, `clone`, `Forty-nine`, `live host`).
+
+### First-mention expansions (finance-expert terms only)
+
+The audience already knows this product and stack. **Do not** pause to define system, ticket, vendor, or everyday money words.
+
+Before generating Eve, scan the spoken script. On the **first** time she says a **finance-expert** term (Act 1 + Act 2 share one audio bed), keep the short form **and** say what it means in the same breath:
+
+> `[short form] — that stands for [full name]`
+
+Expand only terms a general engineer on this team would not already know — return methodologies, institutional reporting, and instrument jargon:
+
+- `T-W-R — that stands for time-weighted return`
+- `M-W-R — that stands for money-weighted return`
+- `G-I-P-S — that stands for Global Investment Performance Standards`
+- `N-A-V — that stands for net asset value`
+- `I-R-R — that stands for internal rate of return`
+- `T-bill — that stands for Treasury bill`
+- `A-F-F-O — that stands for adjusted funds from operations`
+
+**Never expand** product, stack, board, or vendor names, or money words everyone here already uses:
+
+- Product / board: IPT, ADR, MR, ticket numbers
+- Stack / files: API, UI, CSV, HTTP, JWT, CORS, OFX, QIF
+- Vendors / markets: Yahoo, FMP, IBKR, USD, ETF, FX
+- Proper names already spoken in full: Sharpe, Sortino, Eve
+
+Later mentions stay short. If the expansion would push a clip past 13s, split after that sentence — do not drop a *finance* expansion to fit Imagine’s 15s cap.
+
+If you are not sure it is finance-expert jargon, **do not expand it**. Look up the expansion in the repo or ticket; do not invent one.
+
+Write the spoken line into `script.txt` **before** the first `reference_to_video` call. The Imagine prompt must include that exact sentence.
 
 Split Eve on sentence boundaries into **8–13s** clips. Prefer ~10s. Do not drop lines so a clip fits 15s — 15s is only the Imagine per-clip limit.
 
@@ -164,6 +195,7 @@ Extract frames at Act 1 keywords and at Act 2 start + each proof beat:
 
 - Eve is a cutout (no green, no white box), both arms, talking pose
 - Card text matches the line she is on
+- First mention of each **finance-expert** term in `script.txt` / Eve audio includes the full name; later hits stay short. Product/stack names (IPT, API, FMP, CSV) are **not** expanded
 - At Act 2 start the screencap is on screen, not the board
 - PIP is not covering the control she names (move Eve, do not cover the UI)
 - Act 2 still shows the original frame contents — nothing blurred or barred
