@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>skill-set · README</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #121018;
+        --fg: #ece8f4;
+        --muted: #9b93ab;
+        --accent: #c084fc;
+        --rule: #2a2438;
+        --card: #1c1828;
+        --link: #d8b4fe;
+        --job: #fb923c;
+        --ok: #34d399;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; background: var(--bg); color: var(--fg); }
+      body {
+        font: 17px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      header {
+        border-bottom: 1px solid var(--rule);
+        padding: 1.25rem 1.5rem 1rem;
+      }
+      header p { margin: 0.35rem 0 0; color: var(--muted); font-size: 0.85rem; }
+      main {
+        max-width: 72ch;
+        margin: 0 auto;
+        padding: 2rem 1.5rem 5rem;
+      }
+      h1 { font-size: 2rem; margin: 0 0 0.5rem; }
+      h2 { font-size: 1.35rem; margin: 2.2rem 0 0.7rem; }
+      p { margin: 0.8rem 0; }
+      a { color: var(--link); }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.75rem 1rem;
+        margin: 1.25rem 0 0.5rem;
+      }
+      .row h2 { margin: 0; }
+      .watch {
+        appearance: none;
+        border: 0;
+        border-radius: 999px;
+        padding: 0.45rem 0.95rem;
+        font: 650 0.85rem/1.2 inherit;
+        background: #6d28d9;
+        color: white;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .watch:hover, .watch:focus-visible { background: #7c3aed; }
+      .watch[disabled] { background: #3f3a4d; color: var(--muted); cursor: not-allowed; }
+      .chip {
+        display: inline-block;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        padding: 0.2rem 0.5rem;
+        border-radius: 6px;
+        margin-left: 0.4rem;
+        vertical-align: middle;
+      }
+      .chip.job { background: #9a3412; color: #ffedd5; }
+      .chip.ok { background: #064e3b; color: #d1fae5; }
+      table { width: 100%; border-collapse: collapse; font-size: 0.95rem; margin: 0.8rem 0 1.2rem; }
+      th, td { text-align: left; padding: 0.45rem 0.5rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
+      th { color: var(--muted); font-weight: 600; }
+      code, pre {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.86em;
+      }
+      pre {
+        background: var(--card);
+        padding: 0.9rem 1rem;
+        border-radius: 10px;
+        overflow: auto;
+      }
+      .card {
+        background: var(--card);
+        border-radius: 14px;
+        padding: 1rem 1.1rem;
+        margin: 1rem 0;
+      }
+      dialog {
+        border: 0;
+        padding: 0;
+        background: #0b0910;
+        color: var(--fg);
+        border-radius: 14px;
+        width: min(960px, calc(100vw - 2rem));
+        max-width: 100%;
+        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+      }
+      dialog::backdrop { background: rgba(6, 4, 10, 0.72); }
+      .dlg-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid var(--rule);
+      }
+      .dlg-bar strong { font-size: 0.95rem; }
+      .dlg-bar button {
+        appearance: none;
+        border: 0;
+        background: transparent;
+        color: var(--muted);
+        font: 650 0.9rem inherit;
+        cursor: pointer;
+      }
+      video { display: block; width: 100%; background: #000; aspect-ratio: 16 / 9; }
+      .missing { padding: 2rem 1.2rem; color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>skill-set</h1>
+      <p>
+        Local README. Watch buttons open Eve explainers in a dialog.
+        Videos live in <code>docs/ticket-demos/</code> and are not on GitHub.
+      </p>
+    </header>
+    <main>
+      <p>
+        Agent skills reused across Claude Code, Cursor, and Grok.
+        Some are <span class="chip job">job-wired</span> to this author’s
+        stack (GitLab, Phoenix locators, demo login). Those need
+        adjustments before someone else runs them. General skills only
+        need the install script.
+      </p>
+
+      <div class="row">
+        <h2>Overview</h2>
+        <button class="watch" data-src="ticket-demos/explainer-overview.mp4" data-title="Overview">Watch</button>
+      </div>
+      <p>
+        What this repo is, and which three skills you must change for
+        another project.
+      </p>
+
+      <h2>Skills</h2>
+      <table>
+        <thead>
+          <tr><th>Skill</th><th>What it does</th><th></th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>/fake-no-more</code> <span class="chip ok">general</span></td>
+            <td>Check factual claims against a primary source.</td>
+            <td><button class="watch" data-src="ticket-demos/explainer-fake-no-more.mp4" data-title="fake-no-more">Watch</button></td>
+          </tr>
+          <tr>
+            <td><code>/claim-mr</code> <span class="chip ok">general</span></td>
+            <td>Post “claimed for review” so nobody double-starts a PR.</td>
+            <td><button class="watch" data-src="ticket-demos/explainer-claim-mr.mp4" data-title="claim-mr">Watch</button></td>
+          </tr>
+          <tr>
+            <td><code>/claim-fix-ticket</code> <span class="chip job">job-wired</span></td>
+            <td>Claim a GitLab issue, red before video, fix, green after.</td>
+            <td><button class="watch" data-src="ticket-demos/explainer-claim-fix-ticket.mp4" data-title="claim-fix-ticket">Watch</button></td>
+          </tr>
+          <tr>
+            <td><code>/ticket-demo-video</code> <span class="chip job">job-wired</span></td>
+            <td>Eve talks while a real cursor clicks the product.</td>
+            <td><button class="watch" data-src="ticket-demos/explainer-ticket-demo-video.mp4" data-title="ticket-demo-video">Watch</button></td>
+          </tr>
+          <tr>
+            <td><code>/explain-implementation-video</code> <span class="chip job">job-wired</span></td>
+            <td>Studio decisions, then a live recording as proof.</td>
+            <td><button class="watch" data-src="ticket-demos/explainer-explain-implementation-video.mp4" data-title="explain-implementation-video">Watch</button></td>
+          </tr>
+          <tr>
+            <td><code>/explain-in-browser</code> <span class="chip ok">general</span></td>
+            <td>Long answers open as an HTML page. Terminal stays short.</td>
+            <td><button class="watch" data-src="ticket-demos/explainer-explain-in-browser.mp4" data-title="explain-in-browser">Watch</button></td>
+          </tr>
+          <tr>
+            <td><code>/playwright-agent</code> <span class="chip ok">general</span></td>
+            <td>Click a real browser by name. Stops if it is not unique.</td>
+            <td><button class="watch" data-src="ticket-demos/explainer-playwright-agent.mp4" data-title="playwright-agent">Watch</button></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="row">
+        <h2>Installing</h2>
+        <button class="watch" data-src="ticket-demos/explainer-installing.mp4" data-title="Installing">Watch</button>
+      </div>
+      <pre>./install.sh --global
+./install.sh --skill ticket-demo-video --global</pre>
+      <p>
+        Copies skills into Grok, Claude, and Cursor. Start a new session
+        after install. <code>ticket-demo-video</code> and
+        <code>claim-fix-ticket</code> pull <code>playwright-agent</code>
+        automatically.
+      </p>
+
+      <div class="row">
+        <h2>Playwright agent</h2>
+        <button class="watch" data-src="ticket-demos/explainer-playwright-agent.mp4" data-title="playwright-agent">Watch</button>
+      </div>
+      <p>
+        You name the control (“Sign in”, “Email”). Playwright finds it.
+        If it cannot find exactly one match, it stops. Full guide:
+        <a href="../playwright-agent/README.md">playwright-agent/README.md</a>.
+      </p>
+
+      <div class="row">
+        <h2>Evals and demo videos</h2>
+        <button class="watch" data-src="ticket-demos/explainer-evals-and-demos.mp4" data-title="Evals and demo videos">Watch</button>
+      </div>
+      <p>
+        Evals grade decisions, not live video. Demo mp4s stay local —
+        upload them onto the merge request. Do not commit them.
+      </p>
+
+      <div class="card">
+        <strong>Job-wired</strong> skills assume this author’s GitLab
+        boards, Phoenix-style locators, <code>demo-auth.json</code>, and
+        Eve assets. Swap those hosts, login, and locators before you run
+        them on another repo.
+      </div>
+    </main>
+
+    <dialog id="player" aria-labelledby="dlg-title">
+      <div class="dlg-bar">
+        <strong id="dlg-title">Video</strong>
+        <button type="button" id="dlg-close">Close</button>
+      </div>
+      <video id="dlg-video" controls playsinline></video>
+      <p class="missing" id="dlg-missing" hidden>
+        Video file not found. From the repo root run
+        <code>node skill-explainers/build-explainers.mjs</code>
+        then open this page with
+        <code>node skill-explainers/open-readme.mjs</code>
+        (do not use a raw <code>file://</code> open if the clip 404s).
+      </p>
+    </dialog>
+
+    <script>
+      const dlg = document.getElementById("player");
+      const video = document.getElementById("dlg-video");
+      const title = document.getElementById("dlg-title");
+      const missing = document.getElementById("dlg-missing");
+      const closeBtn = document.getElementById("dlg-close");
+
+      function closePlayer() {
+        video.pause();
+        video.removeAttribute("src");
+        video.load();
+        missing.hidden = true;
+        video.hidden = false;
+        if (dlg.open) dlg.close();
+      }
+
+      async function openPlayer(src, name) {
+        title.textContent = name;
+        missing.hidden = true;
+        video.hidden = false;
+        video.src = src;
+        dlg.showModal();
+        try {
+          await video.play();
+        } catch {
+          // autoplay may be blocked; controls are visible
+        }
+      }
+
+      video.addEventListener("error", () => {
+        video.hidden = true;
+        missing.hidden = false;
+      });
+
+      closeBtn.addEventListener("click", closePlayer);
+      dlg.addEventListener("close", closePlayer);
+      dlg.addEventListener("click", (e) => {
+        if (e.target === dlg) closePlayer();
+      });
+
+      document.querySelectorAll(".watch").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          openPlayer(btn.dataset.src, btn.dataset.title);
+        });
+      });
+    </script>
+  </body>
+</html>

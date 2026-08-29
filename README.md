@@ -69,6 +69,16 @@ node skill-explainers/build-explainers.mjs
 # or one slug: node skill-explainers/build-explainers.mjs explainer-overview
 ```
 
+Watch from a README page (each section has a **Watch** button that
+opens the clip in a dialog):
+
+```bash
+node skill-explainers/open-readme.mjs
+```
+
+That serves `docs/` on localhost so the gitignored mp4s can play.
+GitHub cannot host those files.
+
 ## Installing
 
 One script writes every skill into the three agent homes:
