@@ -9,6 +9,7 @@ Agent skills I reuse across Claude Code, Cursor, and Grok.
 | [`claim-fix-ticket`](claim-fix-ticket/) | `/claim-fix-ticket` | Claim a GitLab issue, record a highlighted **before** UI video, implement, run gates, record the same region **after**. |
 | [`ticket-demo-video`](ticket-demo-video/) | `/ticket-demo-video` | Spoken Eve + live UI walkthrough, length = the explanation. Attach the mp4 to the MR; do not commit it. |
 | [`explain-implementation-video`](explain-implementation-video/) | `/explain-implementation-video` | Two-act film: Eve narrates locked decisions on a studio board, then a product recording proves the result. |
+| [`explain-in-browser`](explain-in-browser/) | `/explain-in-browser` | Mid/long explanations open as a readable HTML page; the terminal only gets a short teaser. |
 
 ```
 skill-set/
@@ -18,6 +19,7 @@ skill-set/
   claim-fix-ticket/                SKILL.md + scripts (red/green highlight)
   ticket-demo-video/               SKILL.md + scripts + Eve assets
   explain-implementation-video/    SKILL.md + scripts (two-act board + concat)
+  explain-in-browser/              SKILL.md + markdown-to-HTML renderer
 ```
 
 The three video skills are siblings. Install `ticket-demo-video` with the
@@ -28,6 +30,7 @@ other two — they reuse its Eve assets and compose/publish scripts.
 | `claim-fix-ticket` | Silent red/green pair, issue region boxed | none |
 | `ticket-demo-video` | One live-UI route, Eve PIP | spoken explanation |
 | `explain-implementation-video` | Act 1 studio cards + Act 2 host/.mov | one long Eve bed |
+| `explain-in-browser` | Dark HTML reading page from markdown | none |
 
 Eve is a talking-head cutout (both arms in frame, 72% opacity). She does
 not point.
@@ -73,9 +76,9 @@ Grok already scans those Claude/Cursor folders. `--global` still writes
 `~/.grok/skills` so Grok keeps them if compat is off.
 
 Then invoke by slash command (`/claim-mr`, `/claim-fix-ticket`,
-`/ticket-demo-video`, `/explain-implementation-video`) or let the
-`description` frontmatter trigger. Start a new session (or reload
-skills) after install.
+`/ticket-demo-video`, `/explain-implementation-video`,
+`/explain-in-browser`) or let the `description` frontmatter trigger.
+Start a new session (or reload skills) after install.
 
 ## Evals
 
@@ -90,9 +93,11 @@ or API calls.
 | `ticket-demo-video` | Auth stop, stay vs handoff, watch path |
 | `explain-implementation-video` | Handoff, ask-once, **no redaction** of the screencap, clip-clock |
 | `claim-mr` | Claim-or-stop; `scripts/detect-host.test.mjs` is a unit test |
+| `explain-in-browser` | Browser vs terminal; teaser-only TUI; `scripts/render-explanation.test.mjs` |
 
 ```bash
 node --test claim-mr/scripts/detect-host.test.mjs
+node --test explain-in-browser/scripts/render-explanation.test.mjs
 ```
 
 ## Demo videos

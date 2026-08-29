@@ -1,0 +1,33 @@
+{
+  "skill_name": "explain-in-browser",
+  "evals": [
+    {
+      "id": 0,
+      "name": "long-how-opens-browser",
+      "prompt": "Do a full analysis of how the backup restore upload path is wired and why files over 1 GB fail.",
+      "expected_output": "Treat as mid/long. Write markdown under .grok/explanations/, run render-explanation.mjs, open the HTML. Terminal is only a headline, 4-6 bullets, and the HTML path. Do not dump the full explanation in the TUI.",
+      "files": []
+    },
+    {
+      "id": 1,
+      "name": "short-status-stays-in-terminal",
+      "prompt": "Did the nginx change land on admin-api?",
+      "expected_output": "Short yes/no or one-liner. Stay in the terminal. Do not render HTML.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "slash-forces-browser",
+      "prompt": "/explain-in-browser summarize the restore dialog flow",
+      "expected_output": "Force the browser path even if the answer could fit. Render markdown to HTML, open it, teaser only in the TUI.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "name": "no-double-dump",
+      "prompt": "Walk me through every backup queue and then paste the same write-up here so I have it in chat too.",
+      "expected_output": "Open the HTML for the walkthrough. Do not also paste the full markdown/HTML body into the TUI. Point at the file path. A short teaser is enough.",
+      "files": []
+    }
+  ]
+}
