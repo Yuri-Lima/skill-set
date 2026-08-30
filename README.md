@@ -11,7 +11,7 @@ Agent skills I reuse across Claude Code, Cursor, and Grok.
 | [`explain-implementation-video`](explain-implementation-video/) | `/explain-implementation-video` | Two-act film: Eve narrates locked decisions on a studio board, then a product recording proves the result. |
 | [`explain-in-browser`](explain-in-browser/) | `/explain-in-browser` | Mid/long explanations open as a readable HTML page; the terminal only gets a short teaser. |
 | [`playwright-agent`](playwright-agent/) | `/playwright-agent` | Click and type in a real browser by **name** (Sign in, Email, a test id). Shared by ticket-demo login and claim-fix highlight. [Plain-language guide](playwright-agent/README.md). |
-| [`claude-rc-setup`](claude-rc-setup/) | `/claude-rc-setup` | Make Claude Code Remote Control a **systemd** service so claude.ai/code and the phone app connect without an SSH terminal. Linux only. |
+| [`claude-rc-setup`](claude-rc-setup/) | `/claude-rc-setup` | Make Claude Code Remote Control a **systemd** service so claude.ai/code and the phone app connect without an SSH terminal. Linux only. [Local vs remote install](#claude-remote-control-setup). |
 
 ```
 skill-set/
@@ -127,6 +127,76 @@ Then invoke by slash command (`/claim-mr`, `/claim-fix-ticket`,
 or let the `description` frontmatter trigger.
 
 Start a new session (or reload skills) after install.
+
+`install.sh` only copies playbooks. For `/claude-rc-setup`, enabling
+the systemd unit is a separate step — local laptop vs remote Linux
+host are not the same ([walkthrough](#claude-remote-control-setup)).
+
+## Claude Remote Control setup
+
+Two installs. Copying the skill is not the same as leaving
+`claude remote-control` running as a service.
+
+### Local box (this laptop)
+
+Puts the skill into Grok / Claude / Cursor so `/claude-rc-setup`
+exists. On macOS or Windows the probe stops at `no-systemd` — that is
+expected. Do not enable a unit here unless PID 1 is systemd.
+
+From a clone:
+
+```bash
+./install.sh --skill claude-rc-setup --global
+```
+
+Without cloning:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Yuri-Lima/skill-set/main/install.sh \
+  | bash -s -- --skill claude-rc-setup --global
+```
+
+Start a new session. The slash command appears. You can read the
+skill and talk through a remote setup; the service itself is created
+on the Linux host in the next section.
+
+### Remote box (the Linux host you will attach to)
+
+The playbook **and** the systemd unit live on that host. SSH in as
+the **same user** that already ran `claude` `/login`.
+
+1. Confirm systemd is PID 1 (`ps -p 1 -o comm=`), `command -v claude`
+   works, `~/.claude` exists, and you have `sudo`.
+2. Install the playbook:
+
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/Yuri-Lima/skill-set/main/install.sh \
+     | bash -s -- --skill claude-rc-setup --global
+   ```
+
+   If the repo is already cloned there: `git pull --ff-only` and
+   `./install.sh --skill claude-rc-setup --global`.
+3. In a **project directory** (not `$HOME`, not `/`), accept first-run
+   prompts. A unit cannot answer them:
+
+   ```bash
+   cd /path/to/project
+   claude                          # workspace trust, then quit
+   claude remote-control --name UNIQUE-HOST --spawn same-dir
+   # wait for the session URL / QR, then Ctrl-C
+   ```
+
+   `UNIQUE-HOST` is the name at [claude.ai/code](https://claude.ai/code).
+   Use the hostname. Two boxes with the same name are indistinguishable.
+4. Start a **new** Claude Code session in that directory and run
+   `/claude-rc-setup`. Confirm `WORKDIR`, `NAME`, and the login user.
+   It writes `/etc/systemd/system/claude-rc.service` and
+   `enable --now`.
+5. Open claude.ai/code or the phone app. The session shows a computer
+   icon with a green dot.
+
+Day to day: `sudo systemctl status claude-rc`. Remove the unit with
+`/claude-rc-setup` and ask for **undo**. Do not reboot as a test.
 
 ## Playwright agent, in plain language
 
