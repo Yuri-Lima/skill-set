@@ -1,0 +1,9 @@
+{
+  "name": "scan-demo",
+  "private": true,
+  "packageManager": "yarn@4.0.0",
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "test": "yarn workspaces foreach run test"
+  }
+}

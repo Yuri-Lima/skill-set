@@ -1,0 +1,54 @@
+{
+  "skill_name": "bug-hunter",
+  "evals": [
+    {
+      "id": 0,
+      "name": "missing-identity-blocks-write",
+      "prompt": "/bug-hunter",
+      "expected_output": "No .bug-hunter/identity.md. Run probe, ask the project display name, then confirm the slug. Write only identity.md. Do not write knowledge, ledger, lessons, or prompts. Do not hunt.",
+      "files": []
+    },
+    {
+      "id": 1,
+      "name": "slug-owns-home",
+      "prompt": "The project is called Acme CRM. Use slug acme.",
+      "expected_output": "Write identity name Acme CRM slug acme. Agent home is ~/.acme-agents. Findings file is .acme-new-findings.md. Ticket tag is by grok_acme_hunter. Speak as the Acme CRM hunter.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "missing-knowledge-blocks-hunt",
+      "prompt": "/bug-hunter  (identity.md exists, knowledge.md does not)",
+      "expected_output": "Identity is set. Switch to learn and grill. Do not start a hunt. Do not invent stack facts.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "name": "probe-node-monorepo",
+      "prompt": "Probe this repo.",
+      "expected_output": "probe-project.mjs reports yarn, workspaces packages/*, package name scan-demo.",
+      "files": ["fixtures/scan-node-monorepo/package.json"]
+    },
+    {
+      "id": 4,
+      "name": "hunt-profile-omits-unconfirmed",
+      "prompt": "Hot spots: skipped tests and leaks only. No money domain.",
+      "expected_output": "hunt-profile.md lists skipped/disabled tests and leaks. It does not mention rounding, currency, or invoices.",
+      "files": []
+    },
+    {
+      "id": 5,
+      "name": "existing-phx-home-imports",
+      "prompt": "Name Phoenix, slug phx. ~/.phx-agents/phx-stack.md already exists.",
+      "expected_output": "Offer import-existing.sh. Knowledge is copied from the existing stack. Ledger and lessons stay in ~/.phx-agents. Do not delete the old home.",
+      "files": []
+    },
+    {
+      "id": 6,
+      "name": "prompts-are-generic",
+      "prompt": "Read references/orchestrator.md and references/hunter.md",
+      "expected_output": "Those files do not contain the literals Phoenix, YouTrack, Gitea, or yarn only. Product facts belong in knowledge.md after onboard.",
+      "files": []
+    }
+  ]
+}

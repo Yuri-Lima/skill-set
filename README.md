@@ -12,6 +12,7 @@ Agent skills I reuse across Claude Code, Cursor, and Grok.
 | [`explain-in-browser`](explain-in-browser/) | `/explain-in-browser` | Mid/long explanations open as a readable HTML page; the terminal only gets a short teaser. |
 | [`playwright-agent`](playwright-agent/) | `/playwright-agent` | Click and type in a real browser by **name** (Sign in, Email, a test id). Shared by ticket-demo login and claim-fix highlight. [Plain-language guide](playwright-agent/README.md). |
 | [`claude-rc-setup`](claude-rc-setup/) | `/claude-rc-setup` | Make Claude Code Remote Control a **systemd** service so claude.ai/code and the phone app connect without an SSH terminal. Linux only. [Local vs remote install](#claude-remote-control-setup). |
+| [`bug-hunter`](bug-hunter/) | `/bug-hunter` | Onboard a repo (scan + grill) into a **named** hunter, then hunt bugs the way that repo actually breaks. First questions are the real project name and slug. |
 
 ```
 skill-set/
@@ -24,6 +25,7 @@ skill-set/
   explain-in-browser/              SKILL.md + markdown-to-HTML renderer
   playwright-agent/                standalone CLI + locator engine (used by the video skills)
   claude-rc-setup/                 systemd unit for `claude remote-control` (Linux)
+  bug-hunter/                      onboard + hunt; identity owns ~/.{slug}-agents
   skill-explainers/                scripts + board for the README Eve videos
 ```
 
@@ -123,7 +125,8 @@ Grok already scans those Claude/Cursor folders. `--global` still writes
 
 Then invoke by slash command (`/claim-mr`, `/claim-fix-ticket`,
 `/ticket-demo-video`, `/explain-implementation-video`,
-`/explain-in-browser`, `/playwright-agent`, `/claude-rc-setup`)
+`/explain-in-browser`, `/playwright-agent`, `/claude-rc-setup`,
+`/bug-hunter`)
 or let the `description` frontmatter trigger.
 
 Start a new session (or reload skills) after install.
@@ -231,6 +234,32 @@ node src/cli.mjs open https://demo.playwright.dev/todomvc --headed
 Test Agent prompts with
 `node playwright-agent/scripts/check-upstream.mjs --check`.
 
+## Bug hunter
+
+Install, then in the target repo:
+
+```bash
+./install.sh --skill bug-hunter --global
+# new session
+/bug-hunter
+```
+
+The specialist asks the **real project name** and slug first. That slug
+owns `~/.<slug>-agents/`, the seeded `<slug>-*.md` prompts, and the
+ticket tag. Until identity exists it writes nothing else.
+
+Then it scans the repo and grills for commands, ports, git, publish,
+and which bug classes are in season. The hunter only hunts grounds the
+human confirmed.
+
+YouTrack + Gitea publish recipes ship because they are what the first
+profile uses. GitHub/GitLab ticket and PR adapters are stubs: they
+leave a local `fix/*` branch and stop.
+
+```bash
+node --test bug-hunter/scripts/lib.test.mjs
+```
+
 ## Evals
 
 Each skill that makes a judgment has `evals/evals.json` plus fixtures
@@ -247,11 +276,13 @@ or API calls.
 | `explain-in-browser` | Browser vs terminal; teaser-only TUI; keep-it-here; listen-in-page not `say`; `scripts/render-explanation.test.mjs` |
 | `playwright-agent` | Strict resolve, journal codegen; `cd playwright-agent && npm test` |
 | `claude-rc-setup` | Stop vs proceed (no systemd / no auth / crash loop); `bash claude-rc-setup/scripts/write-unit.test.sh` |
+| `bug-hunter` | Identity-first writes; slug owns home; hunt blocked without knowledge; generic prompts; `node --test bug-hunter/scripts/lib.test.mjs` |
 
 ```bash
 node --test claim-mr/scripts/detect-host.test.mjs
 node --test explain-in-browser/scripts/render-explanation.test.mjs
 bash claude-rc-setup/scripts/write-unit.test.sh
+node --test bug-hunter/scripts/lib.test.mjs
 ```
 
 ## Demo videos
