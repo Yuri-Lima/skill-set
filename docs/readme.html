@@ -34,6 +34,9 @@
       }
       h1 { font-size: 2rem; margin: 0 0 0.5rem; }
       h2 { font-size: 1.35rem; margin: 2.2rem 0 0.7rem; }
+      h3 { font-size: 1.05rem; margin: 1.4rem 0 0.45rem; }
+      ol { padding-left: 1.3rem; }
+      li { margin: 0.4rem 0; }
       p { margin: 0.8rem 0; }
       a { color: var(--link); }
       .row {
@@ -191,7 +194,7 @@
           </tr>
           <tr>
             <td><code>/claude-rc-setup</code> <span class="chip ok">general</span></td>
-            <td>Permanent <code>claude remote-control</code> systemd service. Linux only.</td>
+            <td>Permanent <code>claude remote-control</code> systemd service. Linux only. Local vs remote install below.</td>
             <td></td>
           </tr>
         </tbody>
@@ -207,7 +210,56 @@
         Copies skills into Grok, Claude, and Cursor. Start a new session
         after install. <code>ticket-demo-video</code> and
         <code>claim-fix-ticket</code> pull <code>playwright-agent</code>
-        automatically.
+        automatically. <code>install.sh</code> does not enable the
+        Claude Remote Control unit — that is the next section.
+      </p>
+
+      <h2>Claude Remote Control setup</h2>
+      <p>
+        Copying the skill is not the same as leaving
+        <code>claude remote-control</code> running as a service.
+      </p>
+      <h3>Local box (this laptop)</h3>
+      <p>
+        Puts <code>/claude-rc-setup</code> into your agent homes. On
+        macOS or Windows the probe stops at <code>no-systemd</code> —
+        that is expected. Do not enable a unit here unless PID 1 is
+        systemd.
+      </p>
+      <pre>./install.sh --skill claude-rc-setup --global
+
+curl -fsSL https://raw.githubusercontent.com/Yuri-Lima/skill-set/main/install.sh \
+  | bash -s -- --skill claude-rc-setup --global</pre>
+      <h3>Remote box (Linux host you will attach to)</h3>
+      <p>
+        SSH as the same user that already ran <code>claude</code>
+        <code>/login</code>. Need systemd, the <code>claude</code> CLI,
+        <code>~/.claude</code>, and sudo.
+      </p>
+      <ol>
+        <li>Install the playbook with the same <code>curl</code> line as above.</li>
+        <li>
+          In a <strong>project directory</strong> (not <code>$HOME</code>,
+          not <code>/</code>), accept first-run prompts — a unit cannot:
+          <pre>cd /path/to/project
+claude
+claude remote-control --name UNIQUE-HOST --spawn same-dir
+# wait for the session URL / QR, then Ctrl-C</pre>
+        </li>
+        <li>
+          New Claude Code session in that directory:
+          <code>/claude-rc-setup</code>. Confirm <code>WORKDIR</code>,
+          <code>NAME</code>, and the login user.
+        </li>
+        <li>
+          Open <a href="https://claude.ai/code">claude.ai/code</a> or
+          the phone app. Computer icon, green dot.
+        </li>
+      </ol>
+      <p>
+        Day to day: <code>sudo systemctl status claude-rc</code>.
+        Remove with <code>/claude-rc-setup</code> and ask for
+        <strong>undo</strong>.
       </p>
 
       <div class="row">
