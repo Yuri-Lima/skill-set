@@ -1,0 +1,16 @@
+hostname=box-1
+ip=10.0.0.14
+claude_bin=
+claude_version=
+init=systemd
+user=yuri
+home=/home/yuri
+claude_dir=yes
+claude_json=yes
+existing_unit=none
+stray_pids=
+cwd=/home/yuri/app
+workdir_is_home=no
+blocking_env=
+precondition=fail
+fail=no-claude

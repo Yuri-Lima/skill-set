@@ -1,0 +1,9 @@
+active=activating
+enabled=enabled
+nrestarts=6
+status_present=yes
+journal_auth_error=yes
+process=no
+nrestarts_after=8
+active_after=activating
+verdict=crash-loop

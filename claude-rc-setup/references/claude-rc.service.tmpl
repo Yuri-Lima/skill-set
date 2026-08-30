@@ -1,0 +1,25 @@
+[Unit]
+Description=Claude Code Remote Control (@NAME@)
+Documentation=https://claude.ai/code
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@RUNUSER@
+WorkingDirectory=@WORKDIR@
+Environment=HOME=@HOMEDIR@
+Environment=PATH=@HOMEDIR@/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ExecStart=@BIN@ remote-control --name @NAME@ --spawn same-dir
+
+Restart=always
+RestartSec=10s
+KillMode=mixed
+TimeoutStopSec=30s
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=claude-rc
+
+[Install]
+WantedBy=multi-user.target

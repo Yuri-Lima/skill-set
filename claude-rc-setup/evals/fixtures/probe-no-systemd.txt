@@ -1,0 +1,16 @@
+hostname=yuris-macbook
+ip=192.168.1.20
+claude_bin=/Users/yuri/.local/bin/claude
+claude_version=2.1.248 (Claude Code)
+init=launchd
+user=yuri
+home=/Users/yuri
+claude_dir=yes
+claude_json=yes
+existing_unit=none
+stray_pids=
+cwd=/Users/yuri/app
+workdir_is_home=no
+blocking_env=
+precondition=fail
+fail=no-systemd

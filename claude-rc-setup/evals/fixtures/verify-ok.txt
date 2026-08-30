@@ -1,0 +1,9 @@
+active=active
+enabled=enabled
+nrestarts=0
+status_present=yes
+journal_auth_error=no
+process=yes
+nrestarts_after=0
+active_after=active
+verdict=ok

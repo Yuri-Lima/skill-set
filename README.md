@@ -11,6 +11,7 @@ Agent skills I reuse across Claude Code, Cursor, and Grok.
 | [`explain-implementation-video`](explain-implementation-video/) | `/explain-implementation-video` | Two-act film: Eve narrates locked decisions on a studio board, then a product recording proves the result. |
 | [`explain-in-browser`](explain-in-browser/) | `/explain-in-browser` | Mid/long explanations open as a readable HTML page; the terminal only gets a short teaser. |
 | [`playwright-agent`](playwright-agent/) | `/playwright-agent` | Click and type in a real browser by **name** (Sign in, Email, a test id). Shared by ticket-demo login and claim-fix highlight. [Plain-language guide](playwright-agent/README.md). |
+| [`claude-rc-setup`](claude-rc-setup/) | `/claude-rc-setup` | Make Claude Code Remote Control a **systemd** service so claude.ai/code and the phone app connect without an SSH terminal. Linux only. |
 
 ```
 skill-set/
@@ -22,6 +23,7 @@ skill-set/
   explain-implementation-video/    SKILL.md + scripts (two-act board + concat)
   explain-in-browser/              SKILL.md + markdown-to-HTML renderer
   playwright-agent/                standalone CLI + locator engine (used by the video skills)
+  claude-rc-setup/                 systemd unit for `claude remote-control` (Linux)
   skill-explainers/                scripts + board for the README Eve videos
 ```
 
@@ -121,8 +123,8 @@ Grok already scans those Claude/Cursor folders. `--global` still writes
 
 Then invoke by slash command (`/claim-mr`, `/claim-fix-ticket`,
 `/ticket-demo-video`, `/explain-implementation-video`,
-`/explain-in-browser`, `/playwright-agent`) or let the `description`
-frontmatter trigger.
+`/explain-in-browser`, `/playwright-agent`, `/claude-rc-setup`)
+or let the `description` frontmatter trigger.
 
 Start a new session (or reload skills) after install.
 
@@ -174,10 +176,12 @@ or API calls.
 | `claim-mr` | Claim-or-stop; `scripts/detect-host.test.mjs` is a unit test |
 | `explain-in-browser` | Browser vs terminal; teaser-only TUI; keep-it-here; listen-in-page not `say`; `scripts/render-explanation.test.mjs` |
 | `playwright-agent` | Strict resolve, journal codegen; `cd playwright-agent && npm test` |
+| `claude-rc-setup` | Stop vs proceed (no systemd / no auth / crash loop); `bash claude-rc-setup/scripts/write-unit.test.sh` |
 
 ```bash
 node --test claim-mr/scripts/detect-host.test.mjs
 node --test explain-in-browser/scripts/render-explanation.test.mjs
+bash claude-rc-setup/scripts/write-unit.test.sh
 ```
 
 ## Demo videos
