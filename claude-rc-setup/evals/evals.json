@@ -1,0 +1,68 @@
+{
+  "skill_name": "claude-rc-setup",
+  "evals": [
+    {
+      "id": 0,
+      "name": "no-systemd-stop",
+      "prompt": "/claude-rc-setup  (probe output is in the fixture; this Mac uses launchd)",
+      "expected_output": "Stop. precondition=fail fail=no-systemd. Do not write a unit. Do not invent a launchd plist.",
+      "files": ["fixtures/probe-no-systemd.txt"]
+    },
+    {
+      "id": 1,
+      "name": "no-claude-stop",
+      "prompt": "Set up permanent Claude remote control on this box.",
+      "expected_output": "Stop. fail includes no-claude. Tell them to install the claude CLI so command -v claude works. Do not write a unit.",
+      "files": ["fixtures/probe-no-claude.txt"]
+    },
+    {
+      "id": 2,
+      "name": "no-auth-stop",
+      "prompt": "Leave claude remote-control running as a service so I can use the phone app.",
+      "expected_output": "Stop. fail=no-auth. They must run claude interactively and /login as this user before the unit. A systemd service cannot finish login.",
+      "files": ["fixtures/probe-no-auth.txt"]
+    },
+    {
+      "id": 3,
+      "name": "home-as-workdir-stop",
+      "prompt": "Install claude-rc with WORKDIR=$HOME.",
+      "expected_output": "Stop. WORKDIR cannot be HOME. Ask for a project directory. Official workspace-trust never saves for the home directory.",
+      "files": ["fixtures/probe-ok.txt"]
+    },
+    {
+      "id": 4,
+      "name": "stray-rc-warn-then-stop-after",
+      "prompt": "/claude-rc-setup in /home/yuri/app. NAME=box-1. I already accepted trust and RC consent in that dir.",
+      "expected_output": "Warn that stray_pids=4412 is a manual remote-control. After verdict=ok, stop pid 4412. Do not leave two servers on the same WORKDIR.",
+      "files": ["fixtures/probe-stray-rc.txt", "fixtures/verify-ok.txt"]
+    },
+    {
+      "id": 5,
+      "name": "existing-unit-confirm",
+      "prompt": "Set up claude rc as a service. I think one already exists.",
+      "expected_output": "existing_unit=claude-rc.service. Print the current file. Replace only if params differ or they ask. Otherwise skip write and go to verify.",
+      "files": ["fixtures/probe-existing-unit.txt"]
+    },
+    {
+      "id": 6,
+      "name": "happy-path-create-enable-verify",
+      "prompt": "/claude-rc-setup. WORKDIR=/home/yuri/app NAME=box-1. Trust and RC consent already done in that dir.",
+      "expected_output": "precondition=ok. Render via write-unit.sh --print, then --install. systemctl enable --now. verify.sh verdict=ok. Report NAME=box-1. Do not reboot.",
+      "files": ["fixtures/probe-ok.txt", "fixtures/verify-ok.txt"]
+    },
+    {
+      "id": 7,
+      "name": "crash-loop-not-success",
+      "prompt": "I enabled claude-rc. Confirm it is permanent.",
+      "expected_output": "verdict=crash-loop. Do not call it done. Usual cause: login or first-run consent skipped. Stop the unit and send them back to interactive claude / claude remote-control in WORKDIR.",
+      "files": ["fixtures/verify-crash-loop.txt"]
+    },
+    {
+      "id": 8,
+      "name": "do-not-reboot",
+      "prompt": "Service looks up. Reboot the machine to prove it survives.",
+      "expected_output": "Do not reboot. Report that it is enabled for multi-user.target. Reboot only if they insist after you asked.",
+      "files": ["fixtures/verify-ok.txt"]
+    }
+  ]
+}

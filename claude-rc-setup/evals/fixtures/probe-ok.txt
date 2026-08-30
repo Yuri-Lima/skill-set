@@ -1,0 +1,16 @@
+hostname=box-1
+ip=10.0.0.14
+claude_bin=/home/yuri/.local/bin/claude
+claude_version=2.1.248 (Claude Code)
+init=systemd
+user=yuri
+home=/home/yuri
+claude_dir=yes
+claude_json=yes
+existing_unit=none
+stray_pids=
+cwd=/home/yuri/app
+workdir_is_home=no
+blocking_env=
+precondition=ok
+fail=
