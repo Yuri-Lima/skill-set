@@ -33,6 +33,7 @@ mkdir -p "$HOME_AGENTS"
 
 FINDINGS=".${SLUG}-new-findings.md"
 HUNTER_FILE="${SLUG}-bughunter-agent.md"
+VIDEO_FILE="${SLUG}-video-hunter-agent.md"
 ORCH_FILE="${SLUG}-orchestrator-agent.md"
 STACK_FILE="${SLUG}-stack.md"
 TAG="by grok_$(printf '%s' "$SLUG" | tr '-' '_')_hunter"
@@ -47,6 +48,7 @@ render() {
       -e "s/{{SLUG}}/${SLUG}/g" \
       -e "s/{{FINDINGS}}/${FINDINGS}/g" \
       -e "s/{{HUNTER_FILE}}/${HUNTER_FILE}/g" \
+      -e "s/{{VIDEO_FILE}}/${VIDEO_FILE}/g" \
       -e "s/{{TAG}}/${TAG}/g" \
       "$src" > "$dest"
   echo "  wrote   $dest"
@@ -54,6 +56,7 @@ render() {
 
 render "$SKILL_DIR/references/orchestrator.md" "$HOME_AGENTS/$ORCH_FILE"
 render "$SKILL_DIR/references/hunter.md" "$HOME_AGENTS/$HUNTER_FILE"
+render "$SKILL_DIR/references/video-hunter.md" "$HOME_AGENTS/$VIDEO_FILE"
 
 if [[ -f "$DIR/.bug-hunter/knowledge.md" ]]; then
   cp "$DIR/.bug-hunter/knowledge.md" "$HOME_AGENTS/$STACK_FILE"
@@ -71,6 +74,7 @@ copy_into() {
 
 copy_into "$HOME_AGENTS/$ORCH_FILE" "$DIR/$ORCH_FILE"
 copy_into "$HOME_AGENTS/$HUNTER_FILE" "$DIR/$HUNTER_FILE"
+copy_into "$HOME_AGENTS/$VIDEO_FILE" "$DIR/$VIDEO_FILE"
 if [[ -f "$HOME_AGENTS/$STACK_FILE" ]]; then
   copy_into "$HOME_AGENTS/$STACK_FILE" "$DIR/$STACK_FILE"
 fi

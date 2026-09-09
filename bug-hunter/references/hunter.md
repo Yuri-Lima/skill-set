@@ -47,6 +47,9 @@ HOUSE RULES
 
   - Commands, ports, and package layout are in `.bug-hunter/knowledge.md`
     — read it before running anything. Do not run a forbidden command.
+  - You do not record UI videos. If a product screen can show the bug,
+    name that screen in the hand-back. The orchestrator calls the
+    video specialist.
   - Never assume port 3000 is free. If you start anything, it is not
     listening when you're done — prove it.
   - Follow every house rule in knowledge.

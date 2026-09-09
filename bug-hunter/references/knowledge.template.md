@@ -40,6 +40,10 @@ Every fact is marked `[V]` (observed during onboard), `[R]` (a human said so), o
 
 {{OUT_OF_SEASON}}
 
+## Evidence
+
+{{EVIDENCE}}
+
 ## Lesson source
 
 {{LESSON_SOURCE}}

@@ -127,6 +127,7 @@ describe("hunt profile omits unconfirmed grounds", () => {
       const knowledge = readFileSync(join(dir, ".bug-hunter", "knowledge.md"), "utf8");
       assert.match(knowledge, /Acme CRM/);
       assert.match(knowledge, /by grok_acme_hunter/);
+      assert.match(knowledge, /UI video evidence: \*\*off\*\*/);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -134,14 +135,46 @@ describe("hunt profile omits unconfirmed grounds", () => {
 });
 
 describe("prompts are generic", () => {
-  it("orchestrator and hunter do not name a product or host", () => {
-    const orch = readFileSync(join(here, "..", "references", "orchestrator.md"), "utf8");
-    const hunter = readFileSync(join(here, "..", "references", "hunter.md"), "utf8");
-    for (const text of [orch, hunter]) {
+  it("orchestrator, hunter, and video hunter do not name a product or host", () => {
+    const refs = ["orchestrator.md", "hunter.md", "video-hunter.md"].map((n) =>
+      readFileSync(join(here, "..", "references", n), "utf8")
+    );
+    for (const text of refs) {
       assert.doesNotMatch(text, /Phoenix/);
       assert.doesNotMatch(text, /YouTrack/);
       assert.doesNotMatch(text, /Gitea/);
       assert.doesNotMatch(text, /yarn only/i);
+    }
+  });
+});
+
+describe("video evidence knowledge", () => {
+  it("writes ui-when-possible and keeps clips local", () => {
+    const dir = mkdtempSync(join(tmpdir(), "bh-vid-"));
+    try {
+      const env = { ...process.env, HOME: dir };
+      execFileSync(process.execPath, [join(here, "write-knowledge.mjs"), "identity", "--dir", dir, "--name", "Acme CRM", "--slug", "acme"], { env });
+      const answers = join(dir, "answers.json");
+      writeFileSync(
+        answers,
+        JSON.stringify({
+          packageManager: "npm",
+          hotSpots: ["leaks"],
+          prHost: "none",
+          ticketHost: "none",
+          videoEvidence: "ui-when-possible",
+          videoAuth: "password",
+        })
+      );
+      execFileSync(process.execPath, [join(here, "write-knowledge.mjs"), "from-answers", "--dir", dir, "--answers", answers], { env });
+      const knowledge = readFileSync(join(dir, ".bug-hunter", "knowledge.md"), "utf8");
+      assert.match(knowledge, /UI video evidence: \*\*on\*\*/);
+      assert.match(knowledge, /After clip only when the hunter fixed/);
+      assert.match(knowledge, /Do not upload/);
+      assert.match(knowledge, /Demo auth: password/);
+      assert.doesNotMatch(knowledge, /rounding|currency/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

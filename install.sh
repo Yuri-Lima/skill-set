@@ -113,6 +113,7 @@ skill_deps() {
     ticket-demo-video) printf '%s\n' playwright-agent ;;
     claim-fix-ticket) printf '%s\n' playwright-agent ticket-demo-video ;;
     explain-implementation-video) printf '%s\n' ticket-demo-video ;;
+    bug-hunter) printf '%s\n' playwright-agent ticket-demo-video claim-fix-ticket ;;
   esac
 }
 

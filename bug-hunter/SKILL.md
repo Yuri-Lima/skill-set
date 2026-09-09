@@ -57,8 +57,11 @@ If identity or knowledge is missing, switch to **learn**. Do not hunt.
    and `hunt-brief.md` (empty brief = whole profile in season).
 2. Read `~/.<slug>-agents/lessons.md` and `hunted-ledger.md` if they exist.
 3. Load [`references/orchestrator.md`](references/orchestrator.md) and
-   [`references/hunter.md`](references/hunter.md). Substitute
-   `{{NAME}}` `{{SLUG}}` `{{FINDINGS}}` `{{HUNTER_FILE}}`.
+   [`references/hunter.md`](references/hunter.md). If knowledge Evidence
+   is on, also load
+   [`references/video-hunter.md`](references/video-hunter.md).
+   Substitute `{{NAME}}` `{{SLUG}}` `{{FINDINGS}}` `{{HUNTER_FILE}}`
+   `{{VIDEO_FILE}}`.
 4. Load the adapter that matches knowledge:
    [`references/adapters/tickets.md`](references/adapters/tickets.md),
    [`references/adapters/pull-requests.md`](references/adapters/pull-requests.md).
