@@ -52,7 +52,9 @@ Collect an `answers.json` with this shape (omit keys they skipped):
   "hotSpots": ["skipped-tests", "swallowed-errors", "leaks"],
   "outOfSeason": ["generated/", "vendor/"],
   "notBugs": [],
-  "lessonQuery": ""
+  "lessonQuery": "",
+  "videoEvidence": "off",
+  "videoAuth": "none"
 }
 ```
 
@@ -71,6 +73,18 @@ Batches, in order:
 7. House rules (framework musts).
 8. Out of season + not-a-bug seeds (these become the first lessons).
 9. Learning (how a rejected ticket becomes a lesson, or `none`).
+10. UI video evidence. Ask: when a hunted bug has a product screen, record
+    a silent UI clip as local evidence? Default **no** (`videoEvidence: off`).
+    **Yes** → `ui-when-possible`. Then ask auth: `none` (public route),
+    `password`, or `storage_state`. Scan with
+    `node "$SKILL_DIR/../ticket-demo-video/scripts/resolve-demo-auth.mjs" --scan`
+    (or the sibling install). Never invent a product user. Write gitignored
+    `docs/review-impact/demo-auth.json` if they give credentials. If they
+    want authenticated clips and have not answered, stop — do not mark
+    `ui-when-possible` as a workaround.
+
+On re-learn, if knowledge has no Evidence section, ask batch 10 even
+when the rest is unchanged.
 
 Write:
 

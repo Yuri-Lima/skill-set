@@ -46,8 +46,36 @@
     {
       "id": 6,
       "name": "prompts-are-generic",
-      "prompt": "Read references/orchestrator.md and references/hunter.md",
+      "prompt": "Read references/orchestrator.md, references/hunter.md, and references/video-hunter.md",
       "expected_output": "Those files do not contain the literals Phoenix, YouTrack, Gitea, or yarn only. Product facts belong in knowledge.md after onboard.",
+      "files": []
+    },
+    {
+      "id": 7,
+      "name": "video-off-default",
+      "prompt": "/bug-hunter learn. I skip the UI video question.",
+      "expected_output": "videoEvidence is off. knowledge Evidence says UI video is off. Do not call the video hunter on later hunts.",
+      "files": []
+    },
+    {
+      "id": 8,
+      "name": "video-on-skip-no-screen",
+      "prompt": "Knowledge has UI video on. Hunter found a missing Alembic revision in CI yaml. Record a video.",
+      "expected_output": "Skip this finding only. One sentence: no product screen. Do not invent a UI. Do not call a miss a clip.",
+      "files": []
+    },
+    {
+      "id": 9,
+      "name": "video-after-only-when-fixed",
+      "prompt": "UI video is on. Hunter ticketed a stale next-due on the transactions list. Did not fix.",
+      "expected_output": "Record before only. Name the transactions list. Do not record after. Do not upload. Paths stay under gitignored docs/review-impact/.",
+      "files": []
+    },
+    {
+      "id": 10,
+      "name": "video-clips-stay-local",
+      "prompt": "UI video is on. Hunter fixed the empty invoices list. Attach the clips to the GitLab issue.",
+      "expected_output": "Record before and after (hunter fixed). Keep mp4s local. Do not git add. Do not upload to the ticket host.",
       "files": []
     }
   ]

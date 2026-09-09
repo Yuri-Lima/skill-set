@@ -276,7 +276,7 @@ or API calls.
 | `explain-in-browser` | Browser vs terminal; teaser-only TUI; keep-it-here; listen-in-page not `say`; `scripts/render-explanation.test.mjs` |
 | `playwright-agent` | Strict resolve, journal codegen; `cd playwright-agent && npm test` |
 | `claude-rc-setup` | Stop vs proceed (no systemd / no auth / crash loop); `bash claude-rc-setup/scripts/write-unit.test.sh` |
-| `bug-hunter` | Identity-first writes; slug owns home; hunt blocked without knowledge; generic prompts; `node --test bug-hunter/scripts/lib.test.mjs` |
+| `bug-hunter` | Identity-first writes; slug owns home; hunt blocked without knowledge; generic prompts; video evidence off-by-default / after-only-on-fix / clips stay local; `node --test bug-hunter/scripts/lib.test.mjs` |
 
 ```bash
 node --test claim-mr/scripts/detect-host.test.mjs

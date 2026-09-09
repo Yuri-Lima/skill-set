@@ -146,6 +146,28 @@ if (cmd === "from-answers") {
     if (answers.gitea.repo) pubBits.push(mark(`Gitea repo: ${answers.gitea.repo}`, "R"));
   }
 
+  const videoOn = answers.videoEvidence === "ui-when-possible";
+  const videoAuth = answers.videoAuth || "none";
+  const evidenceBits = [];
+  evidenceBits.push(
+    mark(
+      videoOn
+        ? "UI video evidence: **on** (`ui-when-possible`)"
+        : "UI video evidence: **off**",
+      "R"
+    )
+  );
+  if (videoOn) {
+    evidenceBits.push(mark("Before clip when a product screen can be named; skip that finding only when no screen exists", "I"));
+    evidenceBits.push(mark("After clip only when the hunter fixed that bug", "I"));
+    evidenceBits.push(mark("Clips stay local (gitignored). Do not commit. Do not upload to the ticket host", "I"));
+    evidenceBits.push(mark(`Demo auth: ${videoAuth}`, "R"));
+    if (videoAuth !== "none") {
+      evidenceBits.push(mark("Credentials live in gitignored `docs/review-impact/demo-auth.json` — never invent a product user", "I"));
+    }
+    evidenceBits.push(mark("The video hunter specialist records; regular hunters do not", "I"));
+  }
+
   const knowledge = renderTemplate(loadTemplate("knowledge.template.md"), {
     ...vars,
     LAYOUT: bullets(layoutBits),
@@ -155,6 +177,7 @@ if (cmd === "from-answers") {
     PUBLISH: bullets(pubBits),
     HOUSE_RULES: bullets(answers.houseRules),
     OUT_OF_SEASON: bullets(answers.outOfSeason),
+    EVIDENCE: bullets(evidenceBits),
     LESSON_SOURCE: answers.lessonQuery
       ? mark(answers.lessonQuery, "R")
       : mark("No lesson host configured — maintain `lessons.md` by hand or via `bug-hunter-learn`.", "I"),

@@ -106,7 +106,8 @@ if [[ -f "$WORKTREE/$ORCH_FILE" ]]; then
 else
   sed -n '/^```text$/,/^```$/p' "$SKILL_DIR/references/orchestrator.md" | sed '1d;$d' \
     | sed -e "s/{{NAME}}/${NAME}/g" -e "s/{{SLUG}}/${SLUG}/g" -e "s/{{FINDINGS}}/${FINDINGS}/g" \
-          -e "s/{{HUNTER_FILE}}/${SLUG}-bughunter-agent.md/g" > "$PROMPT"
+          -e "s/{{HUNTER_FILE}}/${SLUG}-bughunter-agent.md/g" \
+          -e "s/{{VIDEO_FILE}}/${SLUG}-video-hunter-agent.md/g" > "$PROMPT"
 fi
 
 {
