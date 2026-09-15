@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${HOME}/.grok/hooks/live-ops-guard/guard.py --event pre",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ${HOME}/.grok/hooks/live-ops-guard/guard.py --event post",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,5 @@
+# live-ops-guard live hosts — one hostname, SSH Host alias, or IP per line.
+# Copy to ~/.grok/hooks/live-ops-guard/live-hosts.txt and add only names
+# the operator pasted verbatim. Do not invent hosts. Do not commit the
+# filled file (real IPs / aliases) to a public repo.
+# Lines starting with # are ignored.
