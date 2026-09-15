@@ -205,6 +205,9 @@ for name in "${NAMES[@]}"; do
     mkdir -p "$dest"
     copy_skill "$SOURCE/$name" "$target"
     echo "copied $name -> $target"
+    if [[ "$name" == "live-ops-guard" && "$dest" == "$HOME/.grok/skills" && "$DRY" -eq 0 ]]; then
+      bash "$target/scripts/install-grok-runtime.sh"
+    fi
   done
 done
 
