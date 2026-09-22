@@ -13,7 +13,7 @@ Agent skills I reuse across Claude Code, Cursor, and Grok.
 | [`playwright-agent`](playwright-agent/) | `/playwright-agent` | Click and type in a real browser by **name** (Sign in, Email, a test id). Shared by ticket-demo login and claim-fix highlight. [Plain-language guide](playwright-agent/README.md). |
 | [`claude-rc-setup`](claude-rc-setup/) | `/claude-rc-setup` | Make Claude Code Remote Control a **systemd** service so claude.ai/code and the phone app connect without an SSH terminal. Linux only. [Local vs remote install](#claude-remote-control-setup). |
 | [`bug-hunter`](bug-hunter/) | `/bug-hunter` | Onboard a repo (scan + grill) into a **named** hunter, then hunt bugs the way that repo actually breaks. First questions are the real project name and slug. |
-| [`live-ops-guard`](live-ops-guard/) | `/live-ops-guard` | Hook + read-only agent that asks before live TeamCity writes, leaked tokens, or destructive SSH. Do not commit real hosts/IPs. |
+| [`live-ops-guard`](live-ops-guard/) | `/live-ops-guard` | Hook + read-only agent that asks before live TeamCity/GitLab writes, leaked tokens, or **any SSH**. Cursor `beforeMCPExecution` / `beforeShellExecution` too. Do not commit real hosts/IPs. |
 
 ```
 skill-set/
@@ -27,7 +27,7 @@ skill-set/
   playwright-agent/                standalone CLI + locator engine (used by the video skills)
   claude-rc-setup/                 systemd unit for `claude remote-control` (Linux)
   bug-hunter/                      onboard + hunt; identity owns ~/.{slug}-agents
-  live-ops-guard/                  PreToolUse hook + read-only agent for live CI/SSH
+  live-ops-guard/                  Grok + Cursor hooks + read-only agent for live CI/SSH
   skill-explainers/                scripts + board for the README Eve videos
 ```
 
@@ -132,9 +132,11 @@ Then invoke by slash command (`/claim-mr`, `/claim-fix-ticket`,
 or let the `description` frontmatter trigger.
 
 `live-ops-guard` also installs a Grok hook (`~/.grok/hooks/`) and agent
-(`~/.grok/agents/`) when you use `./install.sh --skill live-ops-guard --global`.
+(`~/.grok/agents/`), and merges Cursor hook entries into `~/.cursor/hooks.json`,
+when you use `./install.sh --skill live-ops-guard --global`.
 Paste live SSH Host aliases into `~/.grok/hooks/live-ops-guard/live-hosts.txt`
-on the machine only — never commit that file.
+on the machine only — never commit that file. Every `ssh`/`scp`/`sftp`/`sshfs`
+asks, including `uptime` on an unlisted host.
 
 Start a new session (or reload skills) after install.
 

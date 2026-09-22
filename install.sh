@@ -205,8 +205,13 @@ for name in "${NAMES[@]}"; do
     mkdir -p "$dest"
     copy_skill "$SOURCE/$name" "$target"
     echo "copied $name -> $target"
-    if [[ "$name" == "live-ops-guard" && "$dest" == "$HOME/.grok/skills" && "$DRY" -eq 0 ]]; then
-      bash "$target/scripts/install-grok-runtime.sh"
+    if [[ "$name" == "live-ops-guard" && "$DRY" -eq 0 ]]; then
+      if [[ "$dest" == "$HOME/.grok/skills" ]]; then
+        bash "$target/scripts/install-grok-runtime.sh"
+      fi
+      if [[ "$dest" == "$HOME/.cursor/skills" ]]; then
+        bash "$target/scripts/install-cursor-runtime.sh"
+      fi
     fi
   done
 done

@@ -34,6 +34,9 @@ run "placeholder-allow" '"decision": "allow"' <<'EOF'
 {"toolName":"run_terminal_command","toolInput":{"command":"echo Bearer ${TC_AUTH_TOKEN}"}}
 EOF
 
+python3 "$DIR/hooks/test_guard.py"
+echo "python classify tests passed"
+
 if [[ "$fail" -ne 0 ]]; then
   exit 1
 fi
