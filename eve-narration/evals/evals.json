@@ -1,0 +1,40 @@
+{
+  "skill_name": "eve-narration",
+  "evals": [
+    {
+      "id": 0,
+      "name": "portuguese-video-with-srt",
+      "prompt": "/eve-narration Narrate /tmp/release.mp4 using /tmp/release.srt. The video is already cut.",
+      "expected_output": "Spawn roteiro, voz, relogio, montagem, checagem one at a time. Eve via scripts/tts_eve.py. Do not speed or slow the wav. Hold the picture when a line is longer than the scene. Burn captions. Write release-com-audio.mp4 and release-com-audio.srt beside the source. Do not overwrite release.mp4. Do not use say or reference_to_video.",
+      "files": []
+    },
+    {
+      "id": 1,
+      "name": "missing-script-asks-once",
+      "prompt": "/eve-narration Put Eve's voice on /tmp/walkthrough.mp4.",
+      "expected_output": "The mp4 is present and the words are not. Ask once for an srt or a timestamped narration. Do not invent the script and do not call TTS.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "non-portuguese-stops",
+      "prompt": "/eve-narration Narrate this English product tour. Script attached.",
+      "expected_output": "Stop and ask before spawning. The voice script is Brazilian Portuguese. Do not synthesize until the user confirms.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "name": "already-captioned-still-burns",
+      "prompt": "The mp4 already has burned captions. Add Eve anyway and do not leave the old line as the only subtitle.",
+      "expected_output": "Still burn the new caption on Eve's clock. Both lines may show. Do not skip the burn. Do not run a second subtitles filter on top of assemble.py.",
+      "files": []
+    },
+    {
+      "id": 4,
+      "name": "check-fail-retries-once",
+      "prompt": "Checagem says the new caption is a giant block over the center.",
+      "expected_output": "Run montagem once more with that finding, then checagem again. If it still fails, stop and report the path and the failing check. Do not loop.",
+      "files": []
+    }
+  ]
+}

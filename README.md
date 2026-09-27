@@ -8,6 +8,7 @@ Agent skills I reuse across Claude Code, Cursor, and Grok.
 | [`claim-mr`](claim-mr/) | `/claim-mr` | Post a short “claimed for review” note on a GitHub, GitLab, or Gitea PR/MR so nobody double-starts the same review. |
 | [`claim-fix-ticket`](claim-fix-ticket/) | `/claim-fix-ticket` | Claim a GitLab issue, record a highlighted **before** UI video, implement, run gates, record the same region **after**. |
 | [`ticket-demo-video`](ticket-demo-video/) | `/ticket-demo-video` | Spoken Eve + live UI walkthrough, length = the explanation. Attach the mp4 to the MR; do not commit it. |
+| [`eve-narration`](eve-narration/) | `/eve-narration` | Eve (Grok TTS, pt-BR) over a finished mp4. Holds the frame when the line is longer than the cut. Burns captions. Does not speed the voice. |
 | [`explain-implementation-video`](explain-implementation-video/) | `/explain-implementation-video` | Two-act film: Eve narrates locked decisions on a studio board, then a product recording proves the result. |
 | [`explain-in-browser`](explain-in-browser/) | `/explain-in-browser` | Mid/long explanations open as a readable HTML page; the terminal only gets a short teaser. |
 | [`playwright-agent`](playwright-agent/) | `/playwright-agent` | Click and type in a real browser by **name** (Sign in, Email, a test id). Shared by ticket-demo login and claim-fix highlight. [Plain-language guide](playwright-agent/README.md). |
@@ -22,6 +23,7 @@ skill-set/
   claim-mr/                        SKILL.md + detect-host
   claim-fix-ticket/                SKILL.md + scripts (red/green highlight)
   ticket-demo-video/               SKILL.md + scripts + Eve assets
+  eve-narration/                   SKILL.md + TTS, clock, assemble, check
   explain-implementation-video/    SKILL.md + scripts (two-act board + concat)
   explain-in-browser/              SKILL.md + markdown-to-HTML renderer
   playwright-agent/                standalone CLI + locator engine (used by the video skills)
@@ -33,6 +35,8 @@ skill-set/
 
 The three video skills are siblings. Install `ticket-demo-video` with the
 other two — they reuse its Eve assets and compose/publish scripts.
+`eve-narration` is not one of them: it narrates a finished mp4 with Grok
+TTS and does not record the UI or reuse the talking-head assets.
 
 | Skill | Picture | Audio |
 | --- | --- | --- |
@@ -40,6 +44,7 @@ other two — they reuse its Eve assets and compose/publish scripts.
 | `ticket-demo-video` | One live-UI route, Eve PIP | spoken explanation |
 | `explain-implementation-video` | Act 1 studio cards + Act 2 host/.mov | one long Eve bed |
 | `explain-in-browser` | Dark HTML reading page from markdown | none |
+| `eve-narration` | Finished mp4; frame holds if the line is longer | Eve TTS, natural pace |
 
 Eve is a talking-head cutout (both arms in frame, 72% opacity). She does
 not point.
@@ -286,6 +291,7 @@ or API calls.
 | `playwright-agent` | Strict resolve, journal codegen; `cd playwright-agent && npm test` |
 | `claude-rc-setup` | Stop vs proceed (no systemd / no auth / crash loop); `bash claude-rc-setup/scripts/write-unit.test.sh` |
 | `bug-hunter` | Identity-first writes; slug owns home; hunt blocked without knowledge; generic prompts; video evidence off-by-default / after-only-on-fix / clips stay local; `node --test bug-hunter/scripts/lib.test.mjs` |
+| `eve-narration` | Ask once if the script is missing; stop if it is not Portuguese; do not speed the voice; still burn when captions already exist; one remount after a failed check |
 
 ```bash
 node --test claim-mr/scripts/detect-host.test.mjs
