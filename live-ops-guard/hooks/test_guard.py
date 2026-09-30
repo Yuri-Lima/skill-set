@@ -363,9 +363,9 @@ def main() -> int:
     r = mod.post_decision({**nb, "hook_event_name": "PostToolUse", "tool_input": {"command": "bash x.sh"}, "tool_response": f"t {FAKE_PAT}"})
     check("Proceed. Claude Code applied the redaction" in r.get("systemMessage", ""), "notify: redacted result on claude recommends proceed", r.get("systemMessage", ""))
     r = mod.post_decision({"sessionId": "s-notify-grok", "toolName": "run_terminal_command", "toolInput": {"command": "bash x.sh"}, "toolResult": f"t {FAKE_PAT}"})
-    check("Stop and confirm in the transcript" in r.get("systemMessage", ""), "notify: redacted result on other runtimes recommends checking", r.get("systemMessage", ""))
+    check("Grok replaced the model's copy" in r.get("systemMessage", ""), "notify: grok result recommends proceed-then-review", r.get("systemMessage", ""))
     rc = mod.post_decision({"cursor_version": "1.0.0", "conversation_id": "c9", "hook_event_name": "postToolUse", "mcp_server_name": "gitlab", "tool_name": "get_file", "tool_output": f"t {FAKE_GLPAT}"})
-    check("Options:" in rc.get("user_message", "") and "decision" not in rc, "notify: cursor gets the notice as user_message without a block key", str(rc)[:200])
+    check("Options:" in rc.get("additional_context", "") and "decision" not in rc and "user_message" not in rc, "notify: cursor post carries the notice in additional_context only", str(rc)[:200])
     counts = mod.session_counts(mod.ledger_for_session("s-notify"))
     check(counts["noted"] == 2 and counts["redactions"] == 2 and counts["secret_reads"] == 1 and counts["asked"] == 0, "notify: counts (noted ssh + .env pre, input+result exposures, one read)", str(counts))
     fo = mod._fail_open({**nb}, "unit")
@@ -418,6 +418,63 @@ def main() -> int:
     with redirect_stdout(buf):
         mod.review_cli(["s-cexp", "--export", "--out", str(Path(HOME, "out2"))])
     check("evidence exported:" in buf.getvalue() and Path(HOME, "out2", "s-cexp-exposure.md").exists(), "review --export --out writes the file", buf.getvalue()[-300:])
+    os.environ["LIVE_OPS_GUARD_MODE"] = "gate"
+
+    # --- runtimes: payload-first detection, dedupe, grok shapes, cursor fields, stop semantics ---
+    os.environ["LIVE_OPS_GUARD_MODE"] = "notify"
+    grok_ev = {"hookEventName": "pre_tool_use", "hook_event_name": "PreToolUse", "sessionId": "g-run", "toolUseId": "tu-1",
+               "transcript_path": "/Users/x/.grok/sessions/p/g-run/updates.jsonl", "toolName": "run_terminal_command",
+               "toolInput": {"command": "ssh box uptime"}, "permissionMode": "default"}
+    sys.argv = ["guard.py", "--event", "pre", "--runtime", "claude"]
+    check(mod.runtime_of(grok_ev) == "grok", "grok payload wins over --runtime claude (grok loads ~/.claude/settings.json too)")
+    r1 = mod.pre_decision(grok_ev)
+    r2 = mod.pre_decision(grok_ev)
+    check("additionalContext" in r1.get("hookSpecificOutput", {}) and r1.get("decision") == "allow", "grok pre: allow + note", str(r1)[:200])
+    check(r2 == {"decision": "allow"}, "grok pre: second delivery of the same toolUseId is silent", str(r2)[:200])
+    check(len([r for r in mod.ledger_for_session("g-run") if r["stage"] == "pre"]) == 1, "dedupe: one ledger row for one tool call")
+    sys.argv = ["guard.py"]
+    grok_post = {"hookEventName": "post_tool_use", "hook_event_name": "PostToolUse", "sessionId": "g-run", "toolUseId": "tu-2",
+                 "transcript_path": "/Users/x/.grok/sessions/p/g-run/updates.jsonl", "toolName": "run_terminal_command",
+                 "toolInput": {"command": "bash x.sh"},
+                 "toolResult": {"type": "Bash", "command": "bash x.sh", "exit_code": 0,
+                                "output_for_prompt": f"exit: 0\ndeploy {FAKE_PAT}\n",
+                                "stdout": list(f"deploy {FAKE_PAT}\n".encode())}}
+    rp = mod.post_decision(grok_post)
+    upd = rp.get("hookSpecificOutput", {}).get("updatedToolOutput")
+    check(isinstance(upd, dict) and upd.get("type") == "Bash" and upd.get("exit_code") == 0, "grok: replacement keeps the tagged shape", str(upd)[:200])
+    check("ghp_AAAA" not in upd.get("output_for_prompt", "") and "***REDACTED:github-pat***" in upd.get("output_for_prompt", ""), "grok: output_for_prompt redacted")
+    check(isinstance(upd.get("stdout"), list) and "ghp_AAAA" not in bytes(upd["stdout"]).decode(), "grok: byte-list field redacted too")
+    ev_text = rp.get("systemMessage", "")
+    check("line 2 [github-pat]: deploy ***REDACTED" in ev_text and "output_for_prompt" not in ev_text, "grok: evidence shows the output text, not the envelope", ev_text)
+    check(mod.post_decision(grok_post) == {}, "grok: duplicate post delivery is silent")
+    # grok stop: only when review due, once per ledger size, never while continuing
+    st = mod.stop_decision({"hookEventName": "stop", "hook_event_name": "Stop", "sessionId": "g-run", "transcript_path": "/Users/x/.grok/s/updates.jsonl", "reason": "end_turn"})
+    check("additionalContext" in st.get("hookSpecificOutput", {}) and "Relay this" in st["hookSpecificOutput"]["additionalContext"] and "systemMessage" not in st, "grok stop: summary via additionalContext", str(st)[:200])
+    st2 = mod.stop_decision({"hookEventName": "stop", "hook_event_name": "Stop", "sessionId": "g-run", "transcript_path": "/Users/x/.grok/s/updates.jsonl", "reason": "end_turn"})
+    check(st2 == {}, "grok stop: not repeated while the ledger is unchanged", str(st2))
+    st3 = mod.stop_decision({"hookEventName": "stop", "hook_event_name": "Stop", "sessionId": "g-run", "transcript_path": "/Users/x/.grok/s/updates.jsonl", "reason": "end_turn", "stopHookActive": True})
+    check(st3 == {}, "grok stop: silent while a previous block is continuing the turn")
+    # grok start: stdout ignored → nag rides the first tool call, once
+    mod.marker_add({"session_id": "old-1", "transcript_path": "/tmp/o.jsonl"}, "secret-in-tool-result", ["secret:jwt"])
+    check(mod.start_decision({"hookEventName": "session_start", "hook_event_name": "SessionStart", "sessionId": "g-new", "transcript_path": "/Users/x/.grok/s/updates.jsonl"}) == {}, "grok start: emits nothing (stdout ignored)")
+    n1 = mod.pre_decision({"hookEventName": "pre_tool_use", "sessionId": "g-new", "toolUseId": "t1", "toolName": "run_terminal_command", "toolInput": {"command": "ls"}, "transcript_path": "/Users/x/.grok/s/updates.jsonl"})
+    n2 = mod.pre_decision({"hookEventName": "pre_tool_use", "sessionId": "g-new", "toolUseId": "t2", "toolName": "run_terminal_command", "toolInput": {"command": "ls"}, "transcript_path": "/Users/x/.grok/s/updates.jsonl"})
+    check("need a trace review" in n1.get("hookSpecificOutput", {}).get("additionalContext", "") and n1.get("decision") == "allow", "grok: pending-review nag rides the first tool call", str(n1)[:200])
+    check(n2 == {"decision": "allow"}, "grok: nag delivered once per session", str(n2)[:200])
+    # claude: start nag once, plain allow silent
+    c1 = mod.start_decision({"session_id": "c-new", "transcript_path": "/tmp/c.jsonl", "hook_event_name": "SessionStart"})
+    c2 = mod.start_decision({"session_id": "c-new", "transcript_path": "/tmp/c.jsonl", "hook_event_name": "SessionStart"})
+    check("systemMessage" in c1 and c2 == {}, "claude start: nag once per session")
+    check(mod.pre_decision({"session_id": "c-new", "transcript_path": "/tmp/c.jsonl", "hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_use_id": "x1", "tool_input": {"command": "ls"}}) == {}, "claude pre: clean call is silent")
+    # cursor: shell result cannot be redacted; mcp can; stop uses followup_message
+    cs = mod.post_decision({"hook_event_name": "postToolUse", "cursor_version": "1.0.0", "conversation_id": "cu-1", "tool_use_id": "cu-t1", "tool_name": "Shell", "tool_input": {"command": "bash x.sh"}, "tool_output": f"deploy {FAKE_PAT}"})
+    check("updated_mcp_tool_output" not in cs and "Cursor lets a hook replace MCP output only" in cs.get("additional_context", ""), "cursor: shell result not claimed redacted, recommendation says rotate", str(cs)[:300])
+    cm = mod.post_decision({"hook_event_name": "postToolUse", "cursor_version": "1.0.0", "conversation_id": "cu-1", "tool_use_id": "cu-t2", "mcp_server_name": "gitlab", "tool_name": "get_file", "tool_output": json.dumps({"content": f"k={FAKE_GLPAT}"})})
+    check(isinstance(cm.get("updated_mcp_tool_output"), dict) and "glpat-BBBB" not in json.dumps(cm), "cursor: mcp result replaced with same shape", str(cm)[:300])
+    cst = mod.stop_decision({"hook_event_name": "stop", "cursor_version": "1.0.0", "conversation_id": "cu-1", "status": "completed"})
+    check("followup_message" in cst and "Relay this" in cst["followup_message"] and set(cst) == {"followup_message"}, "cursor stop: followup_message only", str(cst)[:200])
+    cstart = mod.start_decision({"hook_event_name": "sessionStart", "cursor_version": "1.0.0", "session_id": "cu-2"})
+    check(set(cstart) == {"additional_context"}, "cursor start: additional_context only", str(cstart)[:100])
     os.environ["LIVE_OPS_GUARD_MODE"] = "gate"
 
     # --- item 2 (user request): no hard-coded host or person in the guard ---

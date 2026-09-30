@@ -57,6 +57,7 @@ HOSTS_FILE = os.path.join(GUARD_HOME, "live-hosts.txt")
 GITLAB_HOSTS_FILE = os.path.join(GUARD_HOME, "gitlab-hosts.txt")
 LEDGER_FILE = os.path.join(GUARD_HOME, "ledger.jsonl")
 MARKER_FILE = os.path.join(GUARD_HOME, "NEEDS_TRACE_REVIEW")
+DEDUPE_FILE = os.path.join(GUARD_HOME, "dedupe.txt")
 
 # How the guard addresses the person at the keyboard. Generic on purpose:
 # no real name or host belongs in this public file.
@@ -584,7 +585,9 @@ def argv_value(flag: str) -> str:
 
 def is_cursor_payload(event: dict[str, Any]) -> bool:
     """Cursor events carry cursor_version, MCP server fields, or Cursor-only event names."""
-    if argv_value("--runtime") == "cursor":
+    if is_grok_payload(event):
+        return False
+    if argv_value("--runtime") == "cursor" and not event.get("transcript_path"):
         return True
     if event.get("cursor_version"):
         return True
@@ -601,20 +604,34 @@ def is_cursor_payload(event: dict[str, Any]) -> bool:
     }
 
 
+def is_grok_payload(event: dict[str, Any]) -> bool:
+    """Grok marks itself: camelCase `hookEventName` with a snake_case value, `toolUseId`,
+    `workspaceRoot`, `permissionMode`, or a transcript under ~/.grok/."""
+    if event.get("hookEventName") and "_" in str(event.get("hookEventName")):
+        return True
+    if any(key in event for key in ("toolUseId", "workspaceRoot", "permissionMode", "toolInputTruncated")):
+        return True
+    transcript = str(event.get("transcript_path") or "")
+    return "/.grok/" in transcript or transcript.endswith("updates.jsonl")
+
+
 def runtime_of(event: dict[str, Any] | None) -> str:
-    """grok | cursor | claude. Grok is the default (its payloads are camelCase)."""
+    """grok | cursor | claude.
+
+    The PAYLOAD decides. Grok loads ~/.claude/settings.json and ~/.cursor/hooks.json
+    as well as its own config, so the same event can arrive through an entry that
+    says `--runtime claude`; trusting the flag would mislabel it. The flag is only
+    the tie-breaker for a payload that carries no runtime marker."""
+    if event:
+        if is_grok_payload(event):
+            return "grok"
+        if is_cursor_payload(event):
+            return "cursor"
+        if event.get("transcript_path") is not None:
+            return "claude"
     forced = argv_value("--runtime")
     if forced in {"grok", "cursor", "claude"}:
         return forced
-    if not event:
-        return "grok"
-    if is_cursor_payload(event):
-        return "cursor"
-    transcript = str(event.get("transcript_path") or "")
-    if "/.grok/" in transcript or transcript.endswith("updates.jsonl"):
-        return "grok"
-    if transcript:
-        return "claude"
     return "grok"
 
 
@@ -1101,6 +1118,43 @@ def ledger_write(
     return entry
 
 
+def tool_use_id_of(event: dict[str, Any]) -> str:
+    for key in ("toolUseId", "tool_use_id", "tool_call_id", "generation_id"):
+        value = event.get(key)
+        if value:
+            return str(value)
+    return ""
+
+
+def seen_before(key: str, keep: int = 500) -> bool:
+    """True if this exact key was already handled. Grok runs every config it can load
+    (its own, ~/.claude/settings.json, ~/.cursor/hooks.json), so one tool call can hit
+    this script two or three times; the operator must get ONE notice."""
+    try:
+        rows: list[str] = []
+        if os.path.exists(DEDUPE_FILE):
+            with open(DEDUPE_FILE, encoding="utf-8") as handle:
+                rows = [line.rstrip("\n") for line in handle if line.strip()]
+        if key in rows:
+            return True
+        rows.append(key)
+        rows = rows[-keep:]
+        os.makedirs(os.path.dirname(DEDUPE_FILE) or ".", exist_ok=True)
+        with open(DEDUPE_FILE, "w", encoding="utf-8") as handle:
+            handle.write("\n".join(rows) + "\n")
+    except OSError:
+        return False
+    return False
+
+
+def dedupe_key(event: dict[str, Any], stage: str) -> str:
+    """Empty when the event has nothing stable to key on (then nothing is deduped)."""
+    tid = tool_use_id_of(event)
+    if not tid:
+        return ""
+    return f"{session_id_of(event)}|{stage}|{tid}"
+
+
 def marker_add(event: dict[str, Any] | None, reason: str, kinds: list[str] | None = None) -> None:
     event = event or {}
     entry = {
@@ -1222,12 +1276,24 @@ def recommended_for(where: str, kinds: list[str], runtime: str, redaction_applie
     if where == "secret-in-tool-result" and redaction_applied and runtime == "claude":
         return (
             "Proceed. Claude Code applied the redaction before the value reached the model "
-            "(verified for Bash and MCP results); still run the trace review at the end."
+            "and the transcript holds the redacted copy (verified for Bash and MCP results); "
+            "still run the trace review at the end."
+        )
+    if where == "secret-in-tool-result" and redaction_applied and runtime == "grok":
+        return (
+            "Proceed, then review. Grok replaced the model's copy (verified) but its session "
+            "record keeps the original, so the value is still on disk: run the trace review at "
+            "the end and rotate if the export shows a real value."
         )
     if where == "secret-in-tool-result" and redaction_applied:
         return (
             "Stop and confirm in the transcript whether the value was actually replaced; "
             "if it is still there, rotate it before proceeding."
+        )
+    if where == "secret-in-tool-result" and runtime == "cursor":
+        return (
+            "Stop and rotate. Cursor lets a hook replace MCP output only, so a shell result "
+            "reaches the model and the transcript unredacted."
         )
     if where == "secret-store-read":
         return "Stop and rotate what that store held, then proceed. Values from a secret store are not pattern-redacted."
@@ -1374,16 +1440,54 @@ def _pre_notify_output(runtime: str, agent_note: str, user_note: str = "") -> di
     return out
 
 
+def pending_review_nag(event: dict[str, Any]) -> str:
+    """Once per session: the pending-review notice, for runtimes that ignore SessionStart stdout."""
+    rows = marker_entries()
+    if not rows:
+        return ""
+    if seen_before(f"{session_id_of(event)}|nag"):
+        return ""
+    by_session: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        by_session.setdefault(str(row.get("session")), []).append(row)
+    lines = [
+        f"{OPERATOR}, {len(by_session)} earlier session(s) exposed secret-like data or ran unguarded "
+        "and still need a trace review:"
+    ]
+    for session, items in list(by_session.items())[:10]:
+        reasons = sorted({str(i.get("reason")) for i in items})
+        lines.append(f"- {session} ({items[0].get('runtime', '?')}): {', '.join(reasons)} x{len(items)}")
+    lines.append(f"Run `{review_command('--last')}` (or `/live-ops-guard review`). The marker is not cleared until you --ack it.")
+    return "\n".join(lines)
+
+
+def _with_nag(out: dict[str, Any], runtime: str, nag: str) -> dict[str, Any]:
+    if not nag:
+        return out
+    if runtime == "cursor":
+        out["agent_message"] = (out.get("agent_message", "") + "\n\n" + nag).strip()
+        return out
+    hso = out.setdefault("hookSpecificOutput", {"hookEventName": "PreToolUse"})
+    hso["additionalContext"] = (hso.get("additionalContext", "") + "\n\n" + nag).strip()
+    if runtime == "grok" and "decision" not in out:
+        out["decision"] = "allow"
+    return out
+
+
 def pre_decision(event: dict[str, Any]) -> dict[str, Any]:
     normalized = normalize_event(event)
     findings = classify(event)
     runtime = runtime_of(event)
     tool = tool_name_of(normalized)
     kinds = finding_kinds(findings)
+    key = dedupe_key(event, "pre")
+    if key and seen_before(key):
+        return _pre_output(runtime, "allow") if runtime != "claude" else {}
+    nag = pending_review_nag(event) if runtime == "grok" else ""
     if not findings:
         if normalized.get("_coerced_shape"):
             ledger_write(normalized, stage="pre", decision="allow", tool=tool, kinds=kinds)
-        return _pre_output(runtime, "allow")
+        return _with_nag(_pre_output(runtime, "allow"), runtime, nag)
 
     if mode_of() == "gate":
         ledger_write(normalized, stage="pre", decision="ask", tool=tool, kinds=kinds)
@@ -1412,7 +1516,66 @@ def pre_decision(event: dict[str, Any]) -> dict[str, Any]:
         + "; ".join(findings)
         + ". If it is a live write or ssh the operator did not ask for, stop and say so."
     )
-    return _pre_notify_output(runtime, agent_note)
+    return _with_nag(_pre_notify_output(runtime, agent_note), runtime, nag)
+
+
+def _is_byte_list(value: Any) -> bool:
+    return (
+        isinstance(value, list)
+        and len(value) >= 8
+        and all(isinstance(item, int) and 0 <= item <= 255 for item in value)
+    )
+
+
+def result_text(result: Any) -> str:
+    """The text a person would read in a tool result, whatever envelope it came in.
+
+    Grok hands PostToolUse a tagged object ({"type": "Bash", "output_for_prompt": …,
+    "stdout": [bytes…]}); Claude Code a string or list; Cursor a string or JSON."""
+    if result is None:
+        return ""
+    if isinstance(result, str):
+        return result
+    if _is_byte_list(result):
+        try:
+            return bytes(result).decode("utf-8", "replace")
+        except (ValueError, TypeError):
+            return ""
+    if isinstance(result, dict):
+        # Grok's built-in tools: output_for_prompt IS the model-facing text; the other
+        # fields (stdout bytes, command) duplicate it and would double every match.
+        ofp = result.get("output_for_prompt")
+        if isinstance(ofp, str) and ofp:
+            return ofp
+        parts: list[str] = []
+        for key, value in result.items():
+            if isinstance(value, (str, dict, list)):
+                text = result_text(value)
+                if text:
+                    parts.append(text)
+        return "\n".join(parts)
+    if isinstance(result, list):
+        return "\n".join(t for t in (result_text(v) for v in result) if t)
+    return flatten_text(result)
+
+
+def redact_result(result: Any) -> Any:
+    """Same shape back, secrets replaced — including inside byte-list fields."""
+    if isinstance(result, str):
+        return redact_text(result)
+    if _is_byte_list(result):
+        try:
+            text = bytes(result).decode("utf-8", "replace")
+        except (ValueError, TypeError):
+            return result
+        if not find_secrets(text):
+            return result
+        return list(redact_text(text).encode("utf-8"))
+    if isinstance(result, dict):
+        return {k: redact_result(v) for k, v in result.items()}
+    if isinstance(result, list):
+        return [redact_result(v) for v in result]
+    return result
 
 
 def _result_blob(event: dict[str, Any]) -> Any:
@@ -1434,13 +1597,16 @@ def post_decision(event: dict[str, Any]) -> dict[str, Any]:
     runtime = runtime_of(event)
     session = session_id_of(event)
     name = tool_name_of(normalized)
+    key = dedupe_key(event, "post")
+    if key and seen_before(key):
+        return {}
 
     # Exposure by construction: the INPUT read a secret store, whatever the output looks like.
     input_findings = classify(event)
     read_kinds = [k for k in finding_kinds(input_findings) if k.startswith("secret-read")]
 
     result = _result_blob(event)
-    text = flatten_text(result)
+    text = result_text(result)
     secrets = find_secrets(text)
 
     if not secrets and not read_kinds:
@@ -1456,6 +1622,9 @@ def post_decision(event: dict[str, Any]) -> dict[str, Any]:
 
     shown_kinds = secrets + [k.split(":", 1)[1] + " (read)" for k in read_kinds]
     where = "secret-in-tool-result" if secrets else "secret-store-read"
+    is_mcp = bool(event.get("mcp_server_name") or "__" in name or name.startswith("mcp__"))
+    # Cursor honours a replacement for MCP output only; a shell result cannot be redacted there.
+    redaction_applied = bool(secrets) and not (runtime == "cursor" and not is_mcp)
     evidence: list[str]
     if secrets:
         count, snippets = evidence_lines(text)
@@ -1467,18 +1636,20 @@ def post_decision(event: dict[str, Any]) -> dict[str, Any]:
             cmd = str(ti.get("command") or "")
         evidence = [f"command: {redact_text(cmd)[:160]}" if cmd else "command not visible in the event",
                     f"result: {len(text)} chars (not pattern-redacted; values from a store rarely match a token shape)"]
-    notice = exposure_notice(where, shown_kinds, session, runtime, tool=name, redaction_applied=bool(secrets), evidence=evidence)
+    notice = exposure_notice(where, shown_kinds, session, runtime, tool=name, redaction_applied=redaction_applied, evidence=evidence)
     instruction = exposure_agent_instruction(notice)
 
     if runtime == "cursor":
-        out: dict[str, Any] = {"additional_context": instruction, "user_message": notice}
-        if secrets:
-            redacted = redact_text(text)
-            if event.get("mcp_server_name") or "gitlab__" in name or "teamcity__" in name:
+        # postToolUse honours additional_context and updated_mcp_tool_output only.
+        out: dict[str, Any] = {"additional_context": instruction}
+        if secrets and is_mcp:
+            if isinstance(result, str):
                 try:
-                    out["updated_mcp_tool_output"] = json.loads(redacted)
+                    out["updated_mcp_tool_output"] = json.loads(redact_text(result))
                 except json.JSONDecodeError:
-                    out["updated_mcp_tool_output"] = {"redacted": redacted}
+                    out["updated_mcp_tool_output"] = redact_text(result)
+            else:
+                out["updated_mcp_tool_output"] = redact_result(result)
         return out
 
     # decision=block does not undo the call (it already ran); it stops the agent and
@@ -1493,25 +1664,24 @@ def post_decision(event: dict[str, Any]) -> dict[str, Any]:
         "systemMessage": notice,
     }
     if secrets:
-        # Always request redaction, for MCP and shell results alike. Whether the
-        # runtime honours it is stated in the note; the ledger records exposure either way.
-        if isinstance(result, dict):
-            try:
-                hook_out["hookSpecificOutput"]["updatedToolOutput"] = json.loads(
-                    redact_text(json.dumps(result, ensure_ascii=False))
-                )
-            except json.JSONDecodeError:
-                hook_out["hookSpecificOutput"]["updatedToolOutput"] = redact_text(text)
-        else:
-            hook_out["hookSpecificOutput"]["updatedToolOutput"] = redact_text(text)
+        # Same shape back, secrets replaced. Grok validates a built-in tool's replacement
+        # against its own tagged shape, so the envelope must survive untouched.
+        hook_out["hookSpecificOutput"]["updatedToolOutput"] = redact_result(result)
     return hook_out
 
 
 def start_decision(event: dict[str, Any]) -> dict[str, Any]:
-    """Session start: nag about sessions still waiting for a trace review."""
+    """Session start: nag about sessions still waiting for a trace review.
+
+    Grok ignores SessionStart stdout, so there the nag rides the first tool call instead
+    (pending_review_nag); here it is only recorded as delivered for the other runtimes."""
     runtime = runtime_of(event)
     rows = marker_entries()
     if not rows:
+        return {}
+    if runtime == "grok":
+        return {}
+    if seen_before(f"{session_id_of(event)}|nag"):
         return {}
     by_session: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
@@ -1526,7 +1696,7 @@ def start_decision(event: dict[str, Any]) -> dict[str, Any]:
     lines.append(f"Run `{review_command('--last')}` (or `/live-ops-guard review`). The marker is not cleared until you --ack it.")
     text = "\n".join(lines)
     if runtime == "cursor":
-        return {"additional_context": text, "user_message": text}
+        return {"additional_context": text}
     return {
         "hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": text},
         "systemMessage": text,
@@ -1557,6 +1727,7 @@ def stop_summary(session: str) -> str:
 
 def stop_decision(event: dict[str, Any]) -> dict[str, Any]:
     session = session_id_of(event)
+    runtime = runtime_of(event)
     rows = ledger_for_session(session)
     counts = session_counts(rows)
     if rows and needs_review(counts) and not any(
@@ -1566,7 +1737,31 @@ def stop_decision(event: dict[str, Any]) -> dict[str, Any]:
     text = stop_summary(session)
     if not text:
         return {}
-    return {"systemMessage": text, "user_message": text, "additional_context": text}
+    # Stop fires per turn (and twice per config in Grok): summarise only when the
+    # ledger grew since the last summary for this session.
+    if seen_before(f"{session}|stop|{len(rows)}"):
+        return {}
+    if runtime == "claude":
+        # systemMessage reaches the operator without forcing another agent round.
+        return {"systemMessage": text}
+    if runtime == "cursor":
+        # stop honours followup_message only; it sends the agent one more message.
+        if not needs_review(counts):
+            return {}
+        return {"followup_message": "Relay this live-ops-guard summary to the operator verbatim, then stop:\n" + text}
+    # grok: stdout on Stop is decision control; additionalContext keeps the agent working
+    # one round so it can relay the summary. Only when a review is due, never while a
+    # previous block is already continuing the turn.
+    if not needs_review(counts) or event.get("stopHookActive") or event.get("stop_hook_active"):
+        return {}
+    if str(event.get("reason") or "end_turn") != "end_turn":
+        return {}
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "Stop",
+            "additionalContext": "Relay this live-ops-guard summary to the operator verbatim, then stop:\n" + text,
+        }
+    }
 
 
 def _fail_open(event: dict[str, Any] | None, why: str) -> dict[str, Any]:

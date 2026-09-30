@@ -4,3 +4,4 @@ hooks/ledger.jsonl
 hooks/NEEDS_TRACE_REVIEW
 hooks/__pycache__/
 hooks/exports/
+hooks/dedupe.txt
