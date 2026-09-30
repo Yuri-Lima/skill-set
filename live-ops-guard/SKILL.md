@@ -18,9 +18,50 @@ description: >
 # Live-ops guard
 
 A live TeamCity or GitLab server is production. This skill is the
-agent-side procedure. Hooks are the last gate — do not skip either layer.
+agent-side procedure; the hooks are the trail and the interruption.
 The guard addresses the person at the keyboard as **Dear Lazy User** unless
 `LIVE_OPS_GUARD_OPERATOR` says otherwise; no real name or host is baked in.
+
+## Modes
+
+| Mode | Before a live call | On a real exposure |
+|------|--------------------|--------------------|
+| **`notify`** (default) | The call **runs**. Findings (ssh, GitLab/TeamCity write, secret-store read) go to the ledger and the agent gets a one-line note. No question is asked. | The guard **interrupts** with an exposure notice and three options — Proceed / Stop / Recommended. |
+| `gate` | The call is **held** with a permission "ask" (the original behaviour). | Same notice and options. |
+
+Set with `--mode gate` on the hook command, or `LIVE_OPS_GUARD_MODE=gate`.
+
+A "real exposure" is one of: a secret-like value in a tool **result**, a
+secret store **read** (`cat .env`, `gh auth token`, …), a secret literal in a
+tool **input** (the agent typed it), or the guard **failing open**. Each one
+writes the ledger and `NEEDS_TRACE_REVIEW`, and produces this, not a yes/no:
+
+```
+EXPOSURE — Dear Lazy User, a secret-like value came back in a tool RESULT (`bash`): github-pat.
+Session <id> (claude) is now marked NEEDS_TRACE_REVIEW; the guard will not clear it.
+
+Options:
+  1. Proceed — keep working; review the trace at the end: python3 …/guard.py review <id>
+  2. Stop — end here; rotate the exposed credential now.
+  3. Recommended — Proceed. Claude Code applied the redaction before the value reached
+     the model (verified for Bash and MCP results); still run the trace review at the end.
+```
+
+The recommendation depends on what happened: a redacted result on Claude Code
+says proceed; a redacted result on a runtime whose redaction support is not
+verified says check the transcript first; a secret-store read or a secret in
+the input says stop and rotate, because those values cannot be pattern-redacted
+or are already written.
+
+**Agent procedure on an exposure notice (both modes):** stop the task, show the
+notice verbatim, ask the operator to pick 1, 2 or 3 (with the ask-the-user tool
+when there is one), and wait. Do not retry, do not quote the value, never `--ack`.
+In Claude Code and Grok the post hook returns `decision: block`, so the agent is
+stopped by the runtime as well; in Cursor it arrives as context + user message.
+
+**Agent procedure in `notify` mode before a live call:** run it. Say in one
+line what you are about to do on the live host. The watcher agent below is for
+`gate` mode, or for when the operator asks for a review before a specific write.
 
 `$SKILL_DIR` is the folder that contains this `SKILL.md`.
 
@@ -89,8 +130,9 @@ writes a `fail-open` ledger row, and marks the session. Non-dict tool inputs
 (a list, a bare string) are flattened and still scanned for ssh/secrets, and
 recorded as `shape: coerced`.
 
-## SSH — always trigger the watcher
+## SSH — in `gate` mode, always trigger the watcher
 
+(In `notify` mode the ssh runs and is recorded; skip to the next section.)
 `ssh` is never "just a read". As soon as the command is `ssh` / `scp` / `sftp` / `sshfs` (or `rsync` over ssh):
 
 1. **Stop.** Do not run Shell / `run_terminal_command` / `Bash` in the same turn you first invent the SSH.
@@ -100,13 +142,13 @@ recorded as `shape: coerced`.
 
 This includes `ssh host uptime`, `ssh -N -L …`, interactive `ssh host`, and hosts **not** in `live-hosts.txt`.
 
-## Secret reads — same rule
+## Secret reads
 
 `cat .env`, `gh auth token`, `op read …`, `echo $API_KEY` and friends put a
-secret into the transcript. The hook asks; if the operator approves, the
-session is marked for trace review anyway, because the value is now in the
-trace. Prefer `${VAR}` references, `-i $KEY_PATH`, and tools that consume a
-secret without printing it.
+secret into the transcript. In `gate` mode the hook asks first; in `notify`
+mode the read runs and the post hook raises the exposure notice, because the
+value is now in the trace either way. Prefer `${VAR}` references,
+`-i $KEY_PATH`, and tools that consume a secret without printing it.
 
 ## GitLab policy
 
@@ -129,7 +171,7 @@ Do not wait for a Grok-style `gitlab__*` / `teamcity__*` name.
 
 YouTrack `create_issue` is **not** GitLab. Only prefix/server/url that actually say GitLab (or a host in `gitlab-hosts.txt`).
 
-## Before any live write
+## Before any live write (`gate` mode)
 
 1. Stop. Do not call a TeamCity POST/PUT/DELETE in the same turn you first invent the change.
 2. Do not call mutating GitLab MCP tools (any runtime's spelling) in the same turn you first invent the change.
@@ -152,7 +194,7 @@ YouTrack `create_issue` is **not** GitLab. Only prefix/server/url that actually 
 - Clear `NEEDS_TRACE_REVIEW` (`--ack`) on the operator's behalf, or tell them the session is clean because a redaction note appeared.
 - Commit `live-hosts.txt`, `gitlab-hosts.txt`, `ledger.jsonl` or `NEEDS_TRACE_REVIEW`. The public copies are the `*.example.txt` files only.
 
-## After a hook ask
+## After a hook ask (`gate` mode)
 
 If the runtime prompts because of `live-ops-guard`, treat a reject as final for that call. Change the call or ask the operator; do not immediately retry the same payload.
 

@@ -4,7 +4,8 @@
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
 G="$DIR/hooks/guard.py"
-export LIVE_OPS_GUARD_HOME
+export LIVE_OPS_GUARD_HOME LIVE_OPS_GUARD_MODE
+LIVE_OPS_GUARD_MODE=gate
 LIVE_OPS_GUARD_HOME="$(mktemp -d)"
 trap 'rm -rf "$LIVE_OPS_GUARD_HOME"' EXIT
 fail=0
@@ -49,9 +50,19 @@ run "unreadable-payload-is-loud" 'could NOT evaluate' <<'EOF'
 {not json
 EOF
 
-run "secret-read-post-exposure" 'marked for trace review' post <<'EOF'
+run "secret-read-post-exposure" 'NEEDS_TRACE_REVIEW' post <<'EOF'
 {"session_id":"smoke-1","transcript_path":"/tmp/smoke.jsonl","hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"cat .env"},"tool_response":"X=1"}
 EOF
+
+LIVE_OPS_GUARD_MODE=notify
+run "notify-ssh-runs" '"additionalContext": "live-ops-guard (notify mode)' <<'EOF'
+{"session_id":"smoke-1","transcript_path":"/tmp/smoke.jsonl","hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"ssh box uptime"}}
+EOF
+
+run "notify-exposure-blocks-with-options" '"decision": "block"' post <<'EOF'
+{"session_id":"smoke-1","transcript_path":"/tmp/smoke.jsonl","hook_event_name":"PostToolUse","tool_name":"Bash","tool_input":{"command":"bash x.sh"},"tool_response":"ghp_abcdefghijklmnopqrstuvwxyz0123456789"}
+EOF
+LIVE_OPS_GUARD_MODE=gate
 
 run "stop-summary" 'Trace review required: YES' stop <<'EOF'
 {"session_id":"smoke-1","transcript_path":"/tmp/smoke.jsonl","hook_event_name":"Stop"}
