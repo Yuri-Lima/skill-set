@@ -414,6 +414,18 @@ def main() -> int:
     gbody = Path(gpath).read_text(encoding="utf-8")
     check("1 flagged tool call" in gsummary and "read_file" in gbody and "glpat-BBBB" not in gbody and "***REDACTED:gitlab-pat***" in gbody, "grok export parses session/update rows", gsummary + gbody[:300])
     check(any(r.get("runtime") == "grok" for r in mod.ledger_for_session("s-gexp")), "grok session ledger row labelled grok")
+    # a Grok Bash envelope with the output as bytes must not leak the value as numbers
+    gt2 = Path(HOME, "fake-grok2", "updates.jsonl"); gt2.parent.mkdir(parents=True, exist_ok=True)
+    env_out = {"type": "Bash", "command": "bash x.sh", "exit_code": 0, "output": list(f"token {FAKE_PAT}\n".encode()), "output_for_prompt": f"exit: 0\ntoken {FAKE_PAT}\n"}
+    gt2.write_text("\n".join([
+        json.dumps({"timestamp": "g1", "method": "session/update", "params": {"update": {"sessionUpdate": "tool_call", "toolCallId": "tc9", "title": "run_terminal_command", "rawInput": {"command": "bash x.sh"}}}}),
+        json.dumps({"timestamp": "g2", "method": "session/update", "params": {"update": {"sessionUpdate": "tool_call_update", "toolCallId": "tc9", "status": "completed", "rawOutput": env_out}}}),
+    ]) + "\n", encoding="utf-8")
+    mod.post_decision({"session_id": "s-gbytes", "transcript_path": str(gt2), "hook_event_name": "PostToolUse", "tool_name": "run_terminal_command", "tool_input": {"command": "bash x.sh"}, "tool_response": env_out})
+    bpath, _ = mod.export_evidence("s-gbytes", str(Path(HOME, "out")))
+    bbody = Path(bpath).read_text(encoding="utf-8")
+    token_bytes = ", ".join(str(b) for b in FAKE_PAT[:8].encode())
+    check("ghp_AAAA" not in bbody and token_bytes not in bbody and "***REDACTED:github-pat***" in bbody, "grok export renders the output text, never the byte array", bbody[-600:])
     buf = io.StringIO()
     with redirect_stdout(buf):
         mod.review_cli(["s-cexp", "--export", "--out", str(Path(HOME, "out2"))])

@@ -1815,10 +1815,14 @@ def _claude_tool_calls(path: str) -> list[dict[str, Any]]:
                 body = item.get("content")
                 if isinstance(body, list):
                     body = "\n".join(str(b.get("text") or "") for b in body if isinstance(b, dict))
-                text = flatten_text(body)
+                text = result_text(body)
                 raw = row.get("toolUseResult")
                 if isinstance(raw, str) and len(raw) > len(text):
                     text = raw
+                elif isinstance(raw, dict):
+                    alt = result_text(raw)
+                    if len(alt) > len(text):
+                        text = alt
                 calls.setdefault(tid, {"id": tid, "tool": "", "input": None, "ts": str(row.get("timestamp") or ""), "result": ""})
                 calls[tid]["result"] = text
                 if tid not in order:
@@ -1849,7 +1853,9 @@ def _grok_tool_calls(path: str) -> list[dict[str, Any]]:
         if upd.get("rawInput") is not None and call["input"] is None:
             call["input"] = upd.get("rawInput")
         if upd.get("rawOutput") is not None:
-            call["result"] = flatten_text(upd.get("rawOutput"))
+            # result_text, never flatten_text: Grok's envelope carries the output as a byte
+            # array too, and a JSON dump would print the secret as numbers.
+            call["result"] = result_text(upd.get("rawOutput"))
         elif isinstance(upd.get("content"), list) and not call["result"]:
             texts = []
             for c in upd["content"]:
