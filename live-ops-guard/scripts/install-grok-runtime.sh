@@ -21,6 +21,14 @@ else
   echo "kept existing $hosts"
 fi
 
+gl="$GROK_HOME/hooks/live-ops-guard/gitlab-hosts.txt"
+if [[ ! -f "$gl" ]]; then
+  cp "$SKILL_DIR/hooks/gitlab-hosts.example.txt" "$gl"
+  echo "created empty $gl — paste self-hosted GitLab hostnames there"
+else
+  echo "kept existing $gl"
+fi
+
 echo "installed hook -> $GROK_HOME/hooks/live-ops-guard.json"
 echo "installed agent -> $GROK_HOME/agents/live-ops-guard.md"
 echo "reload Grok hooks (/hooks) or start a new session"

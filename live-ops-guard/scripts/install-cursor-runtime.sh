@@ -46,9 +46,20 @@ def ensure(event: str, entry: dict) -> None:
         return
     items.append(entry)
 
+start = {
+    "command": "python3 ./hooks/live-ops-guard.py --event start --runtime cursor",
+    "timeout": 10,
+}
+stop = {
+    "command": "python3 ./hooks/live-ops-guard.py --event stop --runtime cursor",
+    "timeout": 10,
+}
+
+ensure("sessionStart", start)
 ensure("beforeShellExecution", pre)
 ensure("beforeMCPExecution", pre)
 ensure("postToolUse", post)
+ensure("stop", stop)
 path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 print(f"merged Cursor hooks -> {path}")
 PY

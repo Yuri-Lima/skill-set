@@ -2,22 +2,58 @@
 """Live-ops guard: ask before live writes, leaked secrets, or irreversible calls.
 
 Covers TeamCity REST writes, GitLab MCP / API mutations, leaked secrets,
-destructive SSH to listed hosts, and suspicious shell.
+reads of secret stores, destructive SSH, and suspicious shell.
 
-Speaks both Grok PreToolUse/PostToolUse and Cursor
-beforeMCPExecution / beforeShellExecution / postToolUse.
+Speaks Grok PreToolUse/PostToolUse, Claude Code PreToolUse/PostToolUse/
+SessionStart/Stop, and Cursor beforeMCPExecution / beforeShellExecution /
+postToolUse / sessionStart / stop.
 
 Reads one hook event JSON from stdin. Prints a decision JSON to stdout.
-Never logs raw payloads. Fail-open (defer/allow) on parse/runtime errors.
+Never logs raw payloads. Fail-open (allow) on parse/runtime errors, but
+LOUD: the operator is told, and the ledger + NEEDS_TRACE_REVIEW marker
+record that the guard did not evaluate the call.
+
+Awareness files (all next to this script, or under $LIVE_OPS_GUARD_HOME):
+
+  ledger.jsonl        one line per guarded / redacted / fail-open event
+                      (timestamp, session, runtime, tool, finding kinds,
+                      decision — never the payload)
+  NEEDS_TRACE_REVIEW  sessions whose trace must be reviewed by a person
+                      (a secret-like value was exposed, a secret store was
+                      read, or the guard failed open). Not cleared by the
+                      guard itself: `guard.py review <session> --ack`.
+
+CLI:
+  guard.py --event pre|post|start|stop [--runtime grok|cursor|claude]
+  guard.py review [SESSION|--last] [--ack]
 """
 
 from __future__ import annotations
 
+import datetime as _dt
 import json
 import os
 import re
 import sys
 from typing import Any
+
+# ---------------------------------------------------------------------------
+# Home, files, operator
+# ---------------------------------------------------------------------------
+
+GUARD_HOME = os.environ.get("LIVE_OPS_GUARD_HOME") or os.path.dirname(os.path.abspath(__file__))
+HOSTS_FILE = os.path.join(GUARD_HOME, "live-hosts.txt")
+GITLAB_HOSTS_FILE = os.path.join(GUARD_HOME, "gitlab-hosts.txt")
+LEDGER_FILE = os.path.join(GUARD_HOME, "ledger.jsonl")
+MARKER_FILE = os.path.join(GUARD_HOME, "NEEDS_TRACE_REVIEW")
+
+# How the guard addresses the person at the keyboard. Generic on purpose:
+# no real name or host belongs in this public file.
+OPERATOR = os.environ.get("LIVE_OPS_GUARD_OPERATOR") or "Dear Lazy User"
+
+# ---------------------------------------------------------------------------
+# Secret patterns
+# ---------------------------------------------------------------------------
 
 PLACEHOLDER_RE = re.compile(
     r"\$\{[^}]+\}|<[^>]{0,40}>|\b(YOUR_TOKEN|CHANGEME|REDACTED|xxx+|TODO|FIXME)\b",
@@ -53,6 +89,59 @@ SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ),
 ]
 
+# ---------------------------------------------------------------------------
+# Secret-store reads (pre-time). Reading a secret is exposure even when the
+# post hook cannot redact the result.
+# ---------------------------------------------------------------------------
+
+# A read verb must lead the segment for FILE patterns to count.
+SECRET_READ_VERB_RE = re.compile(
+    r"(?i)^(?:sudo\s+)?(?:cat|less|more|head|tail|bat|grep|rg|ag|source|\.|base64|xxd|od|"
+    r"strings|awk|sed|nl|tac|paste|cut|tr|cp|scp|rsync|open|code|vim|vi|nano|emacs)\s"
+)
+
+SECRET_READ_FILE_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
+    ("env-file", re.compile(r"(?<![\w/.-])\.env(?:\.(?!example|sample|template|dist)[\w-]+)?(?![\w.-])")),
+    ("ssh-private-key", re.compile(r"\.ssh/(?:id_[A-Za-z0-9_]+|[^\s/]*_key|[^\s/]*\.pem)(?!\.pub)(?![\w.-])")),
+    ("aws-credentials", re.compile(r"\.aws/credentials\b")),
+    ("netrc", re.compile(r"(?<![\w-])_?\.netrc\b")),
+    ("docker-config", re.compile(r"\.docker/config\.json\b")),
+    ("kube-config", re.compile(r"\.kube/config\b")),
+    ("npmrc", re.compile(r"(?<![\w-])\.npmrc\b")),
+    ("pypirc", re.compile(r"(?<![\w-])\.pypirc\b")),
+    ("git-credentials", re.compile(r"\.git-credentials\b")),
+    ("etc-shadow", re.compile(r"/etc/shadow\b")),
+    ("pem-file", re.compile(r"(?<![\w-])[\w./-]+\.(?:pem|p12|pfx|key)(?![\w.-])")),
+]
+
+SECRET_READ_COMMAND_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
+    ("gh-auth-token", re.compile(r"(?i)\bgh\s+auth\s+token\b")),
+    ("glab-show-token", re.compile(r"(?i)\bglab\s+auth\s+status\b[^\n]*--show-token")),
+    ("1password-read", re.compile(r"(?i)\bop\s+(?:read|item\s+get)\b")),
+    ("keychain-read", re.compile(r"(?i)\bsecurity\s+find-(?:generic|internet)-password\b")),
+    ("vault-read", re.compile(r"(?i)\bvault\s+(?:kv\s+get|read)\b")),
+    ("k8s-secret", re.compile(r"(?i)\bkubectl\s+[^\n]*\bget\s+secrets?\b")),
+    (
+        "aws-secret-read",
+        re.compile(
+            r"(?i)\baws\s+(?:configure\s+get\s+aws_secret_access_key|secretsmanager\s+get-secret-value"
+            r"|ssm\s+get-parameters?\b[^\n]*--with-decryption)"
+        ),
+    ),
+    (
+        "echo-secret-var",
+        re.compile(
+            r"(?i)\becho\s+[^\n]*\$\{?[A-Za-z_]*(?:TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|PRIVATE_KEY|_PAT|_KEY)\b"
+        ),
+    ),
+    ("env-dump", re.compile(r"(?:^|[\s;|&(])(?:printenv|env|set|export\s+-p)\s*(?:$|[|;&>)])")),
+    ("history-dump", re.compile(r"(?i)\bhistory\s*(?:$|\|)")),
+]
+
+# ---------------------------------------------------------------------------
+# TeamCity / GitLab / shell classification tables
+# ---------------------------------------------------------------------------
+
 TEAMCITY_WRITE_TOOLS = {
     "teamcity__teamcity_rest_post",
     "teamcity__teamcity_rest_put",
@@ -68,71 +157,16 @@ TEAMCITY_WRITE_BARE = {
     "teamcity_rest_delete": "teamcity__teamcity_rest_delete",
 }
 
-CURSOR_PRE_EVENTS = {
-    "pretooluse",
-    "beforeshellexecution",
-    "beforemcpexecution",
-}
-CURSOR_POST_EVENTS = {
-    "posttooluse",
-    "aftershellexecution",
-    "aftermcpexecution",
-    "posttoolusefailure",
-}
+CURSOR_PRE_EVENTS = {"pretooluse", "beforeshellexecution", "beforemcpexecution"}
+CURSOR_POST_EVENTS = {"posttooluse", "aftershellexecution", "aftermcpexecution", "posttoolusefailure"}
+START_EVENTS = {"sessionstart"}
+STOP_EVENTS = {"stop", "sessionend"}
 
-# GitLab MCP (nova.teachx.ai and any gitlab__* server). Reads stay allow;
-# mutations ask Yuri — same policy as TeamCity live writes.
+# GitLab MCP (gitlab.com, any gitlab__* server, and the hosts the operator
+# lists in gitlab-hosts.txt). Reads stay allow; mutations ask the operator —
+# same policy as TeamCity live writes.
 GITLAB_TOOL_PREFIXES = ("gitlab__",)
 
-# Tool-name tokens that mean a side-effecting GitLab call.
-GITLAB_WRITE_TOKENS = (
-    "create",
-    "update",
-    "delete",
-    "merge",
-    "approve",
-    "unapprove",
-    "publish",
-    "upload",
-    "award",
-    "invite",
-    "revoke",
-    "cancel",
-    "retry",
-    "play",
-    "promote",
-    "protect",
-    "unprotect",
-    "transfer",
-    "move",
-    "fork",
-    "rebase",
-    "cherry_pick",
-    "cherry-pick",
-    "revert",
-    "subscribe",
-    "unsubscribe",
-    "set_",
-    "add_",
-    "remove_",
-    "edit_",
-    "patch",
-    "bulk_",
-    "accept",
-    "reject",
-    "ban",
-    "block",
-    "unblock",
-    "share",
-    "unshare",
-    "start_",
-    "stop_",
-    "trigger",
-    "export",  # can create/export jobs with side effects
-    "import",
-)
-
-# Explicit high-risk GitLab actions (always irreversible-ish).
 GITLAB_IRREVERSIBLE_TOKENS = (
     "merge_merge_request",
     "merge_mr",
@@ -150,10 +184,7 @@ GITLAB_IRREVERSIBLE_TOKENS = (
     "remove_group",
 )
 
-# Shell: glab / curl hitting GitLab hosts with mutating verbs.
-GITLAB_HOST_RE = re.compile(
-    r"(?i)(nova\.teachx\.ai|gitlab\.com|gitlab\.)"
-)
+GITLAB_HOST_GENERIC_RE = re.compile(r"(?i)\bgitlab\.")
 GITLAB_HTTP_MUTATION_RE = re.compile(
     r"(?i)\b(curl|http|https|wget)\b[^\n]*\b(-X|--request)\s*(POST|PUT|PATCH|DELETE)\b"
 )
@@ -171,7 +202,6 @@ GITLAB_GLAB_MUTATION_RE = re.compile(
     r")"
 )
 
-# Paths that cannot be undone, or change live CI shape.
 IRREVERSIBLE_PATH = re.compile(
     r"(?i)(/app/rest/(projects|buildTypes|vcs-roots|agents|users|groups|cloud)"
     r"|/steps(?:/|$)|/features(?:/|$)|unregister|delete)",
@@ -189,11 +219,8 @@ SUSPICIOUS_SHELL = re.compile(
     r")"
 )
 
-HOSTS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "live-hosts.txt")
-
 REMOTE_ACCESS_CMDS = ("ssh", "scp", "rsync", "sftp", "sshfs")
 
-# Destructive on a remote box (or a copy that overwrites remote files).
 DESTRUCTIVE_REMOTE = re.compile(
     r"(?i)("
     r"\brm\s+(-[a-zA-Z]*f|-rf|-fr|--recursive)\b"
@@ -227,39 +254,27 @@ TEAMCITY_DATA_PATH = re.compile(
     r")"
 )
 
-READ_ONLY_REMOTE = re.compile(
-    r"(?i)^("
-    r"true|false|echo|printf|date|uptime|hostname|uname|whoami|id|pwd"
-    r"|df|du|free|ps|top\s+-b\s+-n\s*1"
-    r"|ls|stat|file|wc|head|tail|cat|less|more|find|locate"
-    r"|journalctl|dmesg"
-    r"|systemctl\s+(status|is-active|is-enabled|show|list-units|cat)"
-    r"|docker\s+(ps|logs|inspect|images|info)"
-    r"|ip(\s+addr)?|ss|netstat"
-    r"|git\s+(status|log|diff|show|rev-parse|branch)"
-    r")(\s|$)"
-)
-
 SSH_OPTION_TAKES_VALUE = {
     "b", "c", "D", "E", "e", "F", "I", "i", "J", "L", "l", "m", "O", "o",
     "p", "Q", "R", "S", "W", "w",
 }
 
-SCP_OPTION_TAKES_VALUE = {
-    "c", "F", "i", "J", "l", "o", "P", "S",
-}
+SCP_OPTION_TAKES_VALUE = {"c", "F", "i", "J", "l", "o", "P", "S"}
 
 
-def load_live_hosts() -> set[str]:
+# ---------------------------------------------------------------------------
+# Host lists
+# ---------------------------------------------------------------------------
+
+def _read_host_file(path: str) -> set[str]:
     hosts: set[str] = set()
     try:
-        with open(HOSTS_FILE, encoding="utf-8") as handle:
+        with open(path, encoding="utf-8") as handle:
             for line in handle:
                 line = line.strip()
                 if not line or line.startswith("#"):
                     continue
                 hosts.add(line.lower())
-                # user@host and host:port collapse to host for matching
                 if "@" in line:
                     hosts.add(line.split("@", 1)[1].lower())
                 if ":" in line and not line.count(":") > 1:
@@ -268,6 +283,27 @@ def load_live_hosts() -> set[str]:
         pass
     return hosts
 
+
+def load_live_hosts() -> set[str]:
+    return _read_host_file(HOSTS_FILE)
+
+
+def load_gitlab_hosts() -> set[str]:
+    hosts = _read_host_file(GITLAB_HOSTS_FILE)
+    hosts.add("gitlab.com")
+    return hosts
+
+
+def mentions_gitlab_host(text: str) -> bool:
+    if GITLAB_HOST_GENERIC_RE.search(text):
+        return True
+    lower = text.lower()
+    return any(host in lower for host in load_gitlab_hosts())
+
+
+# ---------------------------------------------------------------------------
+# Shell parsing
+# ---------------------------------------------------------------------------
 
 def split_shell_words(command: str) -> list[str]:
     words: list[str] = []
@@ -335,7 +371,6 @@ def host_from_target(target: str) -> str:
     if "@" in value:
         value = value.split("@", 1)[1]
     if ":" in value and not re.match(r"^\[[0-9a-fA-F:]+\]$", f"[{value}]"):
-        # host:path or host:port — path usually has /, port is digits
         host, rest = value.split(":", 1)
         if rest.isdigit() or rest.startswith("/") or rest == "" or "/" in rest:
             value = host
@@ -408,8 +443,6 @@ def remote_access_findings(command: str, live_hosts: set[str]) -> list[str]:
 
         if binary == "ssh":
             remote = extra.strip()
-            # Always ask. Any ssh is a watcher trigger — including uptime on an
-            # unknown box. Live/destructive are extra findings, not a filter.
             findings.append(f"SSH to {label} {host}")
             if not remote:
                 findings.append(
@@ -417,8 +450,10 @@ def remote_access_findings(command: str, live_hosts: set[str]) -> list[str]:
                     "(full shell; cannot see later commands)"
                 )
             elif DESTRUCTIVE_REMOTE.search(remote) or TEAMCITY_DATA_PATH.search(remote):
+                # redact_text: the remote command may carry a secret and this
+                # string ends up in the operator prompt and the agent context.
                 findings.append(
-                    f"destructive SSH on {label} {host}: {remote[:160]}"
+                    f"destructive SSH on {label} {host}: {redact_text(remote[:160])}"
                 )
             continue
 
@@ -431,14 +466,8 @@ def remote_access_findings(command: str, live_hosts: set[str]) -> list[str]:
             if not remote_like and not uses_ssh:
                 continue
 
-        # scp / rsync / sftp / sshfs — always ask; extra when writing live/TeamCity data.
         writing_remote = False
         remote_shown = ""
-        remote_targets = [
-            word
-            for word in words
-            if ":" in word and not word.startswith("-") and not re.match(r"^[A-Za-z]:\\", word)
-        ]
         saw_local = False
         for word in words:
             if word.startswith("-") or word == binary or word.rsplit("/", 1)[-1] == binary:
@@ -456,7 +485,7 @@ def remote_access_findings(command: str, live_hosts: set[str]) -> list[str]:
                         remote_shown = word
             else:
                 saw_local = True
-        shown = remote_shown or host or "(path in command)"
+        shown = redact_text(remote_shown or host or "(path in command)")
         findings.append(f"{binary} toward {label} {shown}")
         if writing_remote:
             findings.append(f"{binary} write toward {label} {shown}")
@@ -466,6 +495,34 @@ def remote_access_findings(command: str, live_hosts: set[str]) -> list[str]:
             findings.append(f"{binary} session on {label} {shown}")
     return findings
 
+
+def secret_read_findings(command: str) -> list[str]:
+    """Reads of secret stores. The result of these is exposure by definition."""
+    findings: list[str] = []
+    seen: set[str] = set()
+    for segment in command_segments(command):
+        body = segment
+        # strip sudo/env prefixes so the verb check sees the real command
+        words = split_shell_words(segment)
+        binary = first_binary(words)
+        if binary and binary in segment:
+            body = segment[segment.index(binary) :]
+        has_read_verb = bool(SECRET_READ_VERB_RE.match(body))
+        if has_read_verb:
+            for kind, pattern in SECRET_READ_FILE_PATTERNS:
+                if kind not in seen and pattern.search(body):
+                    seen.add(kind)
+                    findings.append(f"secret-read({kind})")
+        for kind, pattern in SECRET_READ_COMMAND_PATTERNS:
+            if kind not in seen and pattern.search(body):
+                seen.add(kind)
+                findings.append(f"secret-read({kind})")
+    return findings
+
+
+# ---------------------------------------------------------------------------
+# Event normalisation
+# ---------------------------------------------------------------------------
 
 def flatten_text(value: Any) -> str:
     if value is None:
@@ -482,12 +539,18 @@ def hook_event_name(event: dict[str, Any]) -> str:
     return str(event.get("hook_event_name") or event.get("hookEventName") or "").lower()
 
 
+def argv_value(flag: str) -> str:
+    if flag in sys.argv:
+        idx = sys.argv.index(flag)
+        if idx + 1 < len(sys.argv):
+            return sys.argv[idx + 1].lower()
+    return ""
+
+
 def is_cursor_payload(event: dict[str, Any]) -> bool:
     """Cursor events carry cursor_version, MCP server fields, or Cursor-only event names."""
-    if "--runtime" in sys.argv:
-        idx = sys.argv.index("--runtime")
-        if idx + 1 < len(sys.argv) and sys.argv[idx + 1].lower() == "cursor":
-            return True
+    if argv_value("--runtime") == "cursor":
+        return True
     if event.get("cursor_version"):
         return True
     if event.get("workspace_roots") is not None:
@@ -501,6 +564,33 @@ def is_cursor_payload(event: dict[str, Any]) -> bool:
         "aftershellexecution",
         "aftermcpexecution",
     }
+
+
+def runtime_of(event: dict[str, Any] | None) -> str:
+    """grok | cursor | claude. Grok is the default (its payloads are camelCase)."""
+    forced = argv_value("--runtime")
+    if forced in {"grok", "cursor", "claude"}:
+        return forced
+    if not event:
+        return "grok"
+    if is_cursor_payload(event):
+        return "cursor"
+    if event.get("transcript_path") is not None:
+        return "claude"
+    return "grok"
+
+
+def session_id_of(event: dict[str, Any] | None) -> str:
+    event = event or {}
+    for key in ("session_id", "sessionId", "conversation_id", "conversationId"):
+        value = event.get(key)
+        if value:
+            return str(value)
+    env = os.environ.get("LIVE_OPS_GUARD_SESSION")
+    if env:
+        return env
+    # The hook is spawned by the runtime process; its pid is stable for the session.
+    return f"ppid-{os.getppid()}"
 
 
 def parse_jsonish(value: Any) -> Any:
@@ -522,19 +612,18 @@ def looks_like_teamcity(server: str, url: str, name: str) -> bool:
 
 def looks_like_gitlab(server: str, url: str, name: str) -> bool:
     blob = f"{server} {url} {name}".lower()
-    return (
-        "gitlab" in blob
-        or "nova.teachx.ai" in blob
-        or name.lower().startswith("gitlab")
-    )
+    return "gitlab" in blob or name.lower().startswith("gitlab") or mentions_gitlab_host(blob)
 
 
 def canonical_tool_name(name: str, server: str = "", url: str = "") -> str:
-    """Map Cursor MCP names onto Grok-style prefixes used by classify()."""
+    """Map Cursor / Claude Code MCP names onto Grok-style prefixes used by classify()."""
     raw = (name or "").strip()
     lower = raw.lower()
     if not lower:
         return raw
+    if lower.startswith("mcp__"):
+        # Claude Code: mcp__<server>__<tool>
+        lower = lower[len("mcp__") :]
     if lower in TEAMCITY_WRITE_BARE:
         return TEAMCITY_WRITE_BARE[lower]
     if lower.startswith("teamcity__") or lower.startswith("gitlab__"):
@@ -569,8 +658,23 @@ def unwrap_call_dynamic(name: str, tool_input: Any) -> tuple[str, Any, str]:
     return inner, tool_input, namespace
 
 
+def coerce_tool_input(tool_input: Any) -> tuple[Any, bool]:
+    """Non-dict inputs are flattened into {"command": ...} so they are still scanned.
+
+    Returns (input, coerced). A coerced shape is recorded in the ledger."""
+    if tool_input is None:
+        return {}, False
+    if isinstance(tool_input, dict):
+        return tool_input, False
+    if isinstance(tool_input, list) and all(isinstance(item, str) for item in tool_input):
+        return {"command": " ".join(tool_input)}, True
+    if isinstance(tool_input, str):
+        return {"command": tool_input}, True
+    return {"command": flatten_text(tool_input)}, True
+
+
 def normalize_event(event: dict[str, Any]) -> dict[str, Any]:
-    """Fold Cursor and Grok payloads into toolName + toolInput classify() expects."""
+    """Fold Cursor, Claude Code and Grok payloads into toolName + toolInput classify() expects."""
     name = str(event.get("toolName") or event.get("tool_name") or "")
     tool_input = parse_jsonish(event.get("toolInput") or event.get("tool_input") or {})
     server = str(event.get("mcp_server_name") or event.get("mcpServerName") or "")
@@ -590,15 +694,14 @@ def normalize_event(event: dict[str, Any]) -> dict[str, Any]:
         if namespace and not server:
             server = namespace
 
+    tool_input, coerced = coerce_tool_input(tool_input)
+
     # beforeShellExecution: command is the user shell. beforeMCPExecution: command is
     # the MCP server launch string — never treat that as a user shell command.
     if event_name in {"beforeshellexecution", "aftershellexecution"}:
         command = str(event.get("command") or "")
-        if command:
-            if not isinstance(tool_input, dict):
-                tool_input = {"command": command}
-            elif not str(tool_input.get("command") or "").strip():
-                tool_input = {**tool_input, "command": command}
+        if command and not str(tool_input.get("command") or "").strip():
+            tool_input = {**tool_input, "command": command}
         if not name:
             name = "Shell"
 
@@ -606,22 +709,27 @@ def normalize_event(event: dict[str, Any]) -> dict[str, Any]:
     out = dict(event)
     out["toolName"] = name
     out["tool_name"] = name
-    out["toolInput"] = tool_input if tool_input is not None else {}
+    out["toolInput"] = tool_input
     out["mcp_server_name"] = server
+    out["_coerced_shape"] = coerced
     return out
 
 
-def findings_reason(findings: list[str]) -> str:
-    return (
-        "live-ops-guard needs your OK before this call.\n"
-        + "\n".join(f"- {item}" for item in findings)
-        + "\nApprove only if you intended this on the live server / GitLab."
-    )
-
+# ---------------------------------------------------------------------------
+# Secrets: find / redact
+# ---------------------------------------------------------------------------
 
 def ignore_span(text: str, start: int, end: int) -> bool:
-    window = text[max(0, start - 24) : min(len(text), end + 24)]
-    return bool(PLACEHOLDER_RE.search(window))
+    """Only a placeholder that OVERLAPS the match exempts it.
+
+    Anything merely nearby (an HTML tag, a ${VAR} a few chars away) must not
+    hide a real token."""
+    for match in PLACEHOLDER_RE.finditer(text):
+        if match.start() < end and match.end() > start:
+            return True
+        if match.start() >= end:
+            break
+    return False
 
 
 def find_secrets(text: str) -> list[str]:
@@ -649,6 +757,10 @@ def redact_text(text: str) -> str:
     return redacted
 
 
+# ---------------------------------------------------------------------------
+# Classification
+# ---------------------------------------------------------------------------
+
 def tool_name_of(event: dict[str, Any]) -> str:
     name = str(event.get("toolName") or event.get("tool_name") or "")
     tool_input = event.get("toolInput") or event.get("tool_input") or {}
@@ -662,7 +774,6 @@ def tool_name_of(event: dict[str, Any]) -> str:
 def teamcity_path_and_body(tool_input: Any) -> tuple[str, str]:
     if not isinstance(tool_input, dict):
         return "", flatten_text(tool_input)
-    # use_tool wraps MCP args
     args = tool_input.get("tool_input") if "tool_input" in tool_input else tool_input
     if not isinstance(args, dict):
         return "", flatten_text(tool_input)
@@ -671,15 +782,8 @@ def teamcity_path_and_body(tool_input: Any) -> tuple[str, str]:
     return path, body
 
 
-
 def normalize_mcp_tool_name(name: str) -> str:
-    """Strip server prefix variants: gitlab__foo, gitlab_foo, foo."""
-    raw = (name or "").strip()
-    lower = raw.lower()
-    for prefix in ("gitlab__", "gitlab_"):
-        if lower.startswith(prefix):
-            return lower
-    return lower
+    return (name or "").strip().lower()
 
 
 def is_gitlab_tool(name: str) -> bool:
@@ -688,13 +792,26 @@ def is_gitlab_tool(name: str) -> bool:
 
 
 def gitlab_tool_action(name: str) -> str:
-    """Return short action id after gitlab__ prefix."""
     lower = normalize_mcp_tool_name(name)
     if lower.startswith("gitlab__"):
         return lower[len("gitlab__") :]
     if lower.startswith("gitlab_"):
         return lower[len("gitlab_") :]
     return lower
+
+
+GITLAB_READ_HEADS = {
+    "get", "list", "search", "my", "whoami", "download", "compare", "validate",
+    "view", "show", "fetch", "read", "mr", "discussions",
+}
+GITLAB_WRITE_HEADS = {
+    "create", "update", "delete", "merge", "approve", "unapprove", "publish", "upload",
+    "award", "invite", "revoke", "cancel", "retry", "play", "promote", "protect",
+    "unprotect", "transfer", "move", "fork", "rebase", "revert", "subscribe",
+    "unsubscribe", "set", "add", "remove", "edit", "patch", "bulk", "accept", "reject",
+    "ban", "block", "unblock", "share", "unshare", "start", "stop", "trigger", "export",
+    "import", "post", "put",
+}
 
 
 def classify_gitlab_tool(name: str, tool_input: Any) -> list[str]:
@@ -704,7 +821,6 @@ def classify_gitlab_tool(name: str, tool_input: Any) -> list[str]:
     action = gitlab_tool_action(name)
     findings: list[str] = []
 
-    # dry_run on patch tools is read-only preview
     args = tool_input
     if isinstance(tool_input, dict) and "tool_input" in tool_input:
         inner = tool_input.get("tool_input")
@@ -713,108 +829,30 @@ def classify_gitlab_tool(name: str, tool_input: Any) -> list[str]:
     if isinstance(args, dict) and args.get("dry_run") is True:
         return []
 
-    # Read-only tools: first path segment is a reader verb.
-    # Important: do NOT substring-match "merge" — list_merge_requests is a read.
     parts = [p for p in action.replace("-", "_").split("_") if p]
     head = parts[0] if parts else ""
-    read_heads = {
-        "get",
-        "list",
-        "search",
-        "my",
-        "whoami",
-        "download",
-        "compare",
-        "validate",
-        "view",
-        "show",
-        "fetch",
-        "read",
-        "mr",  # mr_discussions etc. are reads unless a later write verb leads
-        "discussions",
-    }
-    # mr_discussions / discussions: read. Leading write verb always wins.
-    write_heads = {
-        "create",
-        "update",
-        "delete",
-        "merge",
-        "approve",
-        "unapprove",
-        "publish",
-        "upload",
-        "award",
-        "invite",
-        "revoke",
-        "cancel",
-        "retry",
-        "play",
-        "promote",
-        "protect",
-        "unprotect",
-        "transfer",
-        "move",
-        "fork",
-        "rebase",
-        "revert",
-        "subscribe",
-        "unsubscribe",
-        "set",
-        "add",
-        "remove",
-        "edit",
-        "patch",
-        "bulk",
-        "accept",
-        "reject",
-        "ban",
-        "block",
-        "unblock",
-        "share",
-        "unshare",
-        "start",
-        "stop",
-        "trigger",
-        "export",
-        "import",
-        "post",
-        "put",
-        "put",
-    }
-
-    if head in read_heads and head not in write_heads:
+    if head in GITLAB_READ_HEADS and head not in GITLAB_WRITE_HEADS:
         return []
 
     irreversible = False
     for tok in GITLAB_IRREVERSIBLE_TOKENS:
-        # token match on full action or as underscore-bounded segment sequence
         if action == tok or action.startswith(tok + "_") or action.endswith("_" + tok) or f"_{tok}_" in f"_{action}_":
             irreversible = True
             break
-    # Dedicated merge tool (merge / merge_merge_request / *_merge_request when head is merge)
     if head == "merge" or action in {"merge", "merge_merge_request"} or action.startswith("merge_"):
         irreversible = True
     if head == "delete" or action.startswith("delete_"):
         irreversible = True
 
-    write = irreversible or head in write_heads
+    write = irreversible or head in GITLAB_WRITE_HEADS
     if not write:
-        # e.g. bulk_publish_draft_notes → head bulk
         write = any(
             action.startswith(tok) or f"_{tok}" in f"_{action}"
             for tok in (
-                "create_",
-                "update_",
-                "delete_",
-                "merge_",
-                "approve_",
-                "unapprove_",
-                "publish_",
-                "upload_",
-                "bulk_",
+                "create_", "update_", "delete_", "merge_", "approve_", "unapprove_",
+                "publish_", "upload_", "bulk_",
             )
         )
-
     if not write:
         return []
 
@@ -823,25 +861,17 @@ def classify_gitlab_tool(name: str, tool_input: Any) -> list[str]:
         findings.append(f"irreversible {label}")
     findings.append(f"live GitLab write {label}")
 
-    # Surface target MR/issue when present (no secrets).
     if isinstance(args, dict):
         bits: list[str] = []
         for key in (
-            "project_id",
-            "merge_request_iid",
-            "issue_iid",
-            "noteable_iid",
-            "pipeline_id",
-            "branch",
-            "source_branch",
-            "target_branch",
+            "project_id", "merge_request_iid", "issue_iid", "noteable_iid",
+            "pipeline_id", "branch", "source_branch", "target_branch",
         ):
             val = args.get(key)
             if val is not None and str(val).strip():
-                bits.append(f"{key}={val}")
+                bits.append(f"{key}={redact_text(str(val))[:80]}")
         if bits:
             findings.append("GitLab target " + ", ".join(bits[:6]))
-        # state_event close/reopen/merge-ish
         state_event = str(args.get("state_event") or "").lower()
         if state_event in {"close", "reopen"}:
             findings.append(f"GitLab state_event={state_event}")
@@ -859,23 +889,20 @@ def classify_gitlab_shell(command: str) -> list[str]:
     findings: list[str] = []
     if GITLAB_GLAB_MUTATION_RE.search(command):
         findings.append("live GitLab write via glab CLI")
-    # curl -X POST ... nova.teachx.ai
-    if GITLAB_HOST_RE.search(command) and (
+    gitlab_host = mentions_gitlab_host(command)
+    if gitlab_host and (
         GITLAB_HTTP_MUTATION_RE.search(command)
-        or re.search(r"(?i)\bcurl\b[^\n]*\b-d\b", command)
+        or re.search(r"(?i)\bcurl\b[^\n]*\s-d\b", command)
         or re.search(r"(?i)\bcurl\b[^\n]*\b--data\b", command)
-        or re.search(r"(?i)\bcurl\b[^\n]*\b-F\b", command)
+        or re.search(r"(?i)\bcurl\b[^\n]*\s-F\b", command)
         or re.search(r"(?i)\b(POST|PUT|PATCH|DELETE)\b", command)
     ):
-        # Avoid flagging pure GET curl to gitlab
         if re.search(r"(?i)(-X|--request)\s*GET\b", command):
             return findings
         if re.search(r"(?i)\bmethod\s*[:=]\s*['\"]?GET\b", command):
             return findings
-        # python urllib/requests POST to gitlab
         findings.append("live GitLab HTTP mutation toward GitLab host")
-    # python scripts that hit api/v4 with write methods
-    if re.search(r"(?i)(api/v4|nova\.teachx\.ai)", command) and re.search(
+    if (re.search(r"(?i)api/v4", command) or gitlab_host) and re.search(
         r"(?i)(method\s*=\s*['\"]?(PUT|POST|PATCH|DELETE)|Request\([^\n]*(PUT|POST|PATCH|DELETE))",
         command,
     ):
@@ -899,15 +926,12 @@ def classify(event: dict[str, Any]) -> list[str]:
         method = name.rsplit("_", 1)[-1].upper()
         if method == "DELETE" or IRREVERSIBLE_PATH.search(path):
             findings.append(f"irreversible TeamCity {method} {path or '(no path)'}")
-        elif method == "POST" and "/buildQueue" in path and '"personal":true' not in body.replace(
-            " ", ""
-        ).replace("'", '"').lower().replace("true", "true"):
+        elif method == "POST" and "/buildQueue" in path:
             compact = re.sub(r"\s+", "", body).lower()
             if "personal" not in compact or "personal:true" not in compact.replace('"', ""):
                 findings.append("team-visible TeamCity build (not personal)")
         findings.append(f"live TeamCity write {method} {path or '(no path)'}")
 
-    # GitLab MCP (direct tool or use_tool wrapper — name already unwrapped).
     findings.extend(classify_gitlab_tool(name, tool_input))
 
     command = ""
@@ -922,35 +946,293 @@ def classify(event: dict[str, Any]) -> list[str]:
     if command:
         if SUSPICIOUS_SHELL.search(command):
             findings.append("suspicious shell command")
+        findings.extend(secret_read_findings(command))
         findings.extend(remote_access_findings(command, load_live_hosts()))
         findings.extend(classify_gitlab_shell(command))
 
-    return findings
+    # Belt and braces: nothing that leaves the guard carries a literal secret.
+    return [redact_text(item) for item in findings]
+
+
+def finding_kinds(findings: list[str]) -> list[str]:
+    """Short, payload-free tags for the ledger."""
+    kinds: list[str] = []
+
+    def add(kind: str) -> None:
+        if kind not in kinds:
+            kinds.append(kind)
+
+    for item in findings:
+        if item.startswith("secret("):
+            for part in item[len("secret(") : -1].split(","):
+                add("secret:" + part.strip())
+        elif item.startswith("secret-read("):
+            add("secret-read:" + item[len("secret-read(") : -1])
+        elif item.startswith("interactive SSH"):
+            add("ssh-interactive")
+        elif item.startswith("destructive SSH"):
+            add("ssh-destructive")
+        elif item.startswith("SSH to"):
+            add("ssh")
+        elif " write toward " in item:
+            add("remote-write")
+        elif " toward " in item or " session on " in item:
+            add("remote-copy")
+        elif item.startswith("irreversible TeamCity"):
+            add("teamcity-irreversible")
+        elif item.startswith("team-visible TeamCity"):
+            add("teamcity-team-build")
+        elif item.startswith("live TeamCity write"):
+            add("teamcity-write")
+        elif item.startswith("irreversible GitLab"):
+            add("gitlab-irreversible")
+        elif item.startswith("live GitLab"):
+            add("gitlab-write")
+        elif item.startswith("suspicious shell"):
+            add("suspicious")
+        elif item.startswith("guard could not evaluate"):
+            add("fail-open")
+    return kinds
+
+
+# ---------------------------------------------------------------------------
+# Ledger + marker (the awareness layer)
+# ---------------------------------------------------------------------------
+
+def _now() -> str:
+    return _dt.datetime.now(_dt.timezone.utc).replace(microsecond=0).isoformat()
+
+
+def _append_jsonl(path: str, entry: dict[str, Any]) -> None:
+    try:
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
+def _read_jsonl(path: str) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    try:
+        with open(path, encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(row, dict):
+                    rows.append(row)
+    except OSError:
+        pass
+    return rows
+
+
+def ledger_write(
+    event: dict[str, Any] | None,
+    *,
+    stage: str,
+    decision: str,
+    tool: str = "",
+    kinds: list[str] | None = None,
+    note: str = "",
+) -> dict[str, Any]:
+    """One line, never the payload."""
+    event = event or {}
+    entry: dict[str, Any] = {
+        "ts": _now(),
+        "session": session_id_of(event),
+        "runtime": runtime_of(event),
+        "event": hook_event_name(event) or stage,
+        "stage": stage,
+        "tool": tool[:120],
+        "kinds": kinds or [],
+        "decision": decision,
+    }
+    transcript = event.get("transcript_path")
+    if transcript:
+        entry["transcript"] = str(transcript)
+    if event.get("_coerced_shape"):
+        entry["shape"] = "coerced"
+    if note:
+        entry["note"] = redact_text(note)[:200]
+    _append_jsonl(LEDGER_FILE, entry)
+    return entry
+
+
+def marker_add(event: dict[str, Any] | None, reason: str, kinds: list[str] | None = None) -> None:
+    event = event or {}
+    entry = {
+        "ts": _now(),
+        "session": session_id_of(event),
+        "runtime": runtime_of(event),
+        "reason": reason,
+        "kinds": kinds or [],
+    }
+    transcript = event.get("transcript_path")
+    if transcript:
+        entry["transcript"] = str(transcript)
+    _append_jsonl(MARKER_FILE, entry)
+
+
+def marker_entries() -> list[dict[str, Any]]:
+    return _read_jsonl(MARKER_FILE)
+
+
+def marker_ack(session: str) -> int:
+    rows = marker_entries()
+    keep = [row for row in rows if str(row.get("session")) != session]
+    removed = len(rows) - len(keep)
+    try:
+        if keep:
+            with open(MARKER_FILE, "w", encoding="utf-8") as handle:
+                for row in keep:
+                    handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+        elif os.path.exists(MARKER_FILE):
+            os.remove(MARKER_FILE)
+    except OSError:
+        pass
+    return removed
+
+
+def ledger_for_session(session: str) -> list[dict[str, Any]]:
+    return [row for row in _read_jsonl(LEDGER_FILE) if str(row.get("session")) == session]
+
+
+def session_counts(rows: list[dict[str, Any]]) -> dict[str, int]:
+    counts = {"asked": 0, "redactions": 0, "secret_reads": 0, "fail_opens": 0, "coerced": 0}
+    for row in rows:
+        decision = str(row.get("decision") or "")
+        kinds = [str(k) for k in row.get("kinds") or []]
+        if decision == "ask":
+            counts["asked"] += 1
+        if decision == "redacted":
+            counts["redactions"] += 1
+        if decision == "exposure" or any(k.startswith("secret-read") for k in kinds):
+            counts["secret_reads"] += 1
+        if decision == "fail-open":
+            counts["fail_opens"] += 1
+        if row.get("shape") == "coerced":
+            counts["coerced"] += 1
+    return counts
+
+
+def review_command(session: str) -> str:
+    script = os.path.abspath(__file__)
+    return f"python3 {script} review {session}"
+
+
+def needs_review(counts: dict[str, int]) -> bool:
+    return bool(counts["redactions"] or counts["secret_reads"] or counts["fail_opens"])
+
+
+# ---------------------------------------------------------------------------
+# Messages
+# ---------------------------------------------------------------------------
+
+def findings_reason(findings: list[str]) -> str:
+    return (
+        f"{OPERATOR}, live-ops-guard needs your OK before this call.\n"
+        + "\n".join(f"- {item}" for item in findings)
+        + "\nApprove only if you intended this on the live server / GitLab."
+    )
+
+
+def fail_open_message(event: dict[str, Any] | None, why: str) -> str:
+    session = session_id_of(event)
+    return (
+        f"{OPERATOR}, live-ops-guard could NOT evaluate this call ({why}) and let it through. "
+        "Treat it as unguarded. The session is marked for trace review: "
+        f"`{review_command(session)}`."
+    )
+
+
+def exposure_note(kinds: list[str], session: str, runtime: str, redaction_applied: bool) -> str:
+    base = (
+        f"{OPERATOR}, live-ops-guard found secret-like values in a tool result "
+        f"({', '.join(kinds)}). Do not echo or reuse them."
+    )
+    if redaction_applied:
+        base += (
+            " Redaction was requested via the hook output; if this runtime ignores "
+            "updated tool output the original values are STILL in the transcript."
+        )
+    else:
+        base += " The original values are in the transcript."
+    base += f" Session {session} ({runtime}) is marked for trace review: `{review_command(session)}`."
+    return base
+
+
+# ---------------------------------------------------------------------------
+# Decisions
+# ---------------------------------------------------------------------------
+
+def _pre_output(runtime: str, decision: str, reason: str = "", loud: str = "") -> dict[str, Any]:
+    """Shape the pre decision for the runtime. `loud` is a fail-open message."""
+    if runtime == "cursor":
+        if decision == "ask":
+            return {
+                "permission": "ask",
+                "user_message": reason,
+                "agent_message": (
+                    "live-ops-guard needs the operator's OK. Do not retry this call. "
+                    "Treat a reject as final.\n" + reason
+                ),
+            }
+        out: dict[str, Any] = {"permission": "allow"}
+        if loud:
+            out["user_message"] = loud
+            out["agent_message"] = loud
+        return out
+    if runtime == "claude":
+        if decision == "ask":
+            return {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "ask",
+                    "permissionDecisionReason": reason,
+                },
+                "systemMessage": reason,
+            }
+        out = {}
+        if loud:
+            out = {
+                "hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": loud},
+                "systemMessage": loud,
+            }
+        return out
+    # grok
+    if decision == "ask":
+        return {"decision": "ask", "reason": reason}
+    out = {"decision": "allow"}
+    if loud:
+        out["reason"] = loud
+        out["systemMessage"] = loud
+    return out
 
 
 def pre_decision(event: dict[str, Any]) -> dict[str, Any]:
+    normalized = normalize_event(event)
     findings = classify(event)
-    if is_cursor_payload(event):
-        if not findings:
-            return {"permission": "allow"}
-        reason = findings_reason(findings)
-        return {
-            "permission": "ask",
-            "user_message": reason,
-            "agent_message": (
-                "live-ops-guard needs the operator's OK. Do not retry this call. "
-                "Treat a reject as final.\n" + reason
-            ),
-        }
+    runtime = runtime_of(event)
+    tool = tool_name_of(normalized)
+    kinds = finding_kinds(findings)
     if not findings:
-        return {"decision": "allow"}
-    return {"decision": "ask", "reason": findings_reason(findings)}
+        if normalized.get("_coerced_shape"):
+            ledger_write(normalized, stage="pre", decision="allow", tool=tool, kinds=kinds)
+        return _pre_output(runtime, "allow")
+    ledger_write(normalized, stage="pre", decision="ask", tool=tool, kinds=kinds)
+    return _pre_output(runtime, "ask", findings_reason(findings))
 
 
 def _result_blob(event: dict[str, Any]) -> Any:
     for key in (
         "toolResult",
         "tool_result",
+        "tool_response",
         "tool_output",
         "result_json",
         "output",
@@ -961,76 +1243,236 @@ def _result_blob(event: dict[str, Any]) -> Any:
 
 
 def post_decision(event: dict[str, Any]) -> dict[str, Any]:
+    normalized = normalize_event(event)
+    runtime = runtime_of(event)
+    session = session_id_of(event)
+    name = tool_name_of(normalized)
+
+    # Exposure by construction: the INPUT read a secret store, whatever the output looks like.
+    input_findings = classify(event)
+    read_kinds = [k for k in finding_kinds(input_findings) if k.startswith("secret-read")]
+
     result = _result_blob(event)
     text = flatten_text(result)
     secrets = find_secrets(text)
-    if not secrets:
+
+    if not secrets and not read_kinds:
         return {}
-    redacted = redact_text(text)
-    name = tool_name_of(normalize_event(event))
-    note = (
-        "live-ops-guard redacted secret-like values in the tool result "
-        f"({', '.join(secrets)}). Do not echo or reuse the original values."
-    )
-    if is_cursor_payload(event):
+
+    kinds = ["secret:" + s for s in secrets] + read_kinds
+    if secrets:
+        ledger_write(normalized, stage="post", decision="redacted", tool=name, kinds=kinds)
+        marker_add(normalized, "secret-in-tool-result", kinds)
+    else:
+        ledger_write(normalized, stage="post", decision="exposure", tool=name, kinds=kinds)
+        marker_add(normalized, "secret-store-read", kinds)
+
+    shown_kinds = secrets + [k.split(":", 1)[1] + " (read)" for k in read_kinds]
+
+    if runtime == "cursor":
+        note = exposure_note(shown_kinds, session, runtime, redaction_applied=bool(secrets))
         out: dict[str, Any] = {"additional_context": note}
-        if event.get("mcp_server_name") or "gitlab__" in name or "teamcity__" in name:
-            try:
-                out["updated_mcp_tool_output"] = json.loads(redacted)
-            except json.JSONDecodeError:
-                out["updated_mcp_tool_output"] = {"redacted": redacted}
+        if secrets:
+            redacted = redact_text(text)
+            if event.get("mcp_server_name") or "gitlab__" in name or "teamcity__" in name:
+                try:
+                    out["updated_mcp_tool_output"] = json.loads(redacted)
+                except json.JSONDecodeError:
+                    out["updated_mcp_tool_output"] = {"redacted": redacted}
         return out
+
+    note = exposure_note(shown_kinds, session, runtime, redaction_applied=bool(secrets))
     hook_out: dict[str, Any] = {
         "hookSpecificOutput": {
             "hookEventName": "PostToolUse",
             "additionalContext": note,
-        }
+        },
+        "systemMessage": note,
     }
-    if "__" in name:
-        hook_out["hookSpecificOutput"]["updatedToolOutput"] = redacted
-    elif isinstance(result, dict):
-        rewritten = json.loads(redact_text(json.dumps(result)))
-        hook_out["hookSpecificOutput"]["updatedToolOutput"] = rewritten
+    if secrets:
+        # Always request redaction, for MCP and shell results alike. Whether the
+        # runtime honours it is stated in the note; the ledger records exposure either way.
+        if isinstance(result, dict):
+            try:
+                hook_out["hookSpecificOutput"]["updatedToolOutput"] = json.loads(
+                    redact_text(json.dumps(result, ensure_ascii=False))
+                )
+            except json.JSONDecodeError:
+                hook_out["hookSpecificOutput"]["updatedToolOutput"] = redact_text(text)
+        else:
+            hook_out["hookSpecificOutput"]["updatedToolOutput"] = redact_text(text)
     return hook_out
 
 
-def main() -> int:
-    raw = sys.stdin.read()
+def start_decision(event: dict[str, Any]) -> dict[str, Any]:
+    """Session start: nag about sessions still waiting for a trace review."""
+    runtime = runtime_of(event)
+    rows = marker_entries()
+    if not rows:
+        return {}
+    by_session: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        by_session.setdefault(str(row.get("session")), []).append(row)
+    lines = [
+        f"{OPERATOR}, {len(by_session)} earlier session(s) exposed secret-like data or ran unguarded "
+        "and still need a trace review:"
+    ]
+    for session, items in list(by_session.items())[:10]:
+        reasons = sorted({str(i.get("reason")) for i in items})
+        lines.append(f"- {session} ({items[0].get('runtime', '?')}): {', '.join(reasons)} x{len(items)}")
+    lines.append(f"Run `{review_command('--last')}` (or `/live-ops-guard review`). The marker is not cleared until you --ack it.")
+    text = "\n".join(lines)
+    if runtime == "cursor":
+        return {"additional_context": text, "user_message": text}
+    return {
+        "hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": text},
+        "systemMessage": text,
+    }
+
+
+def stop_summary(session: str) -> str:
+    rows = ledger_for_session(session)
+    counts = session_counts(rows)
+    if not rows:
+        return ""
+    lines = [
+        f"live-ops-guard — session {session} summary for {OPERATOR}",
+        f"  guarded calls asked: {counts['asked']}",
+        f"  secret-like values redacted: {counts['redactions']}",
+        f"  secret-store reads: {counts['secret_reads']}",
+        f"  guard fail-opens: {counts['fail_opens']}",
+    ]
+    if counts["coerced"]:
+        lines.append(f"  calls with an unexpected payload shape (scanned anyway): {counts['coerced']}")
+    if needs_review(counts):
+        lines.append(f"  Trace review required: YES -> {review_command(session)}")
+    else:
+        lines.append("  Trace review required: no")
+    return "\n".join(lines)
+
+
+def stop_decision(event: dict[str, Any]) -> dict[str, Any]:
+    session = session_id_of(event)
+    rows = ledger_for_session(session)
+    counts = session_counts(rows)
+    if rows and needs_review(counts) and not any(
+        str(r.get("session")) == session for r in marker_entries()
+    ):
+        marker_add(event, "session-summary", [])
+    text = stop_summary(session)
+    if not text:
+        return {}
+    return {"systemMessage": text, "user_message": text, "additional_context": text}
+
+
+def _fail_open(event: dict[str, Any] | None, why: str) -> dict[str, Any]:
+    """Allow, but loudly, and leave a trail."""
+    runtime = runtime_of(event)
     try:
-        event = json.loads(raw) if raw.strip() else {}
-    except json.JSONDecodeError:
-        # Hybrid: Grok reads decision, Cursor reads permission.
-        print(json.dumps({"decision": "defer", "permission": "allow"}))
+        ledger_write(event, stage="pre", decision="fail-open", tool="", kinds=["fail-open"], note=why)
+        marker_add(event, "guard-fail-open", ["fail-open"])
+    except Exception:  # noqa: BLE001 — never let the trail break the allow
+        pass
+    loud = fail_open_message(event, why)
+    if runtime == "grok":
+        return {"decision": "allow", "reason": loud, "systemMessage": loud}
+    return _pre_output(runtime, "allow", loud=loud)
+
+
+# ---------------------------------------------------------------------------
+# review CLI
+# ---------------------------------------------------------------------------
+
+def review_cli(args: list[str]) -> int:
+    ack = "--ack" in args
+    positional = [a for a in args if not a.startswith("--")]
+    session = positional[0] if positional else ""
+    rows_marker = marker_entries()
+    if "--last" in args or session == "--last":
+        session = str(rows_marker[-1].get("session")) if rows_marker else ""
+        if not session:
+            print("live-ops-guard: nothing is waiting for review.")
+            return 0
+
+    if not session:
+        if not rows_marker:
+            print("live-ops-guard: nothing is waiting for review.")
+            return 0
+        by_session: dict[str, list[dict[str, Any]]] = {}
+        for row in rows_marker:
+            by_session.setdefault(str(row.get("session")), []).append(row)
+        print(f"{OPERATOR}, these sessions still need a trace review:")
+        for sid, items in by_session.items():
+            reasons = sorted({str(i.get("reason")) for i in items})
+            transcript = next((i.get("transcript") for i in items if i.get("transcript")), "")
+            print(f"  {sid}  [{items[0].get('runtime', '?')}]  {', '.join(reasons)}  x{len(items)}")
+            if transcript:
+                print(f"      transcript: {transcript}")
+        print(f"\nNext: {review_command('<session>')}")
         return 0
 
-    event_name = hook_event_name(event)
-    argv_event = ""
-    if "--event" in sys.argv:
-        idx = sys.argv.index("--event")
-        if idx + 1 < len(sys.argv):
-            argv_event = sys.argv[idx + 1].lower()
-
-    is_post = (
-        argv_event in {"post", "cursor-post"}
-        or "post_tool_use" in event_name
-        or event_name in CURSOR_POST_EVENTS
-    )
-
-    try:
-        if is_post:
-            print(json.dumps(post_decision(event)))
-        else:
-            print(json.dumps(pre_decision(event)))
-    except Exception as exc:  # noqa: BLE001 — fail open
-        print(json.dumps(_fail_open(event)))
-        print(f"live-ops-guard error: {type(exc).__name__}", file=sys.stderr)
+    rows = ledger_for_session(session)
+    marks = [r for r in rows_marker if str(r.get("session")) == session]
+    if not rows and not marks:
+        print(f"live-ops-guard: no ledger or marker entries for session {session}.")
+        return 1
+    print(stop_summary(session) or f"live-ops-guard — session {session}: no ledger rows")
+    print("\nLedger:")
+    for row in rows:
+        kinds = ",".join(str(k) for k in row.get("kinds") or []) or "-"
+        print(f"  {row.get('ts')}  {row.get('stage'):4}  {row.get('decision'):9}  {row.get('tool') or '-'}  {kinds}")
+    transcript = next((r.get("transcript") for r in rows + marks if r.get("transcript")), "")
+    print("\nNext: analyse the trace.")
+    if transcript:
+        print(f"  /trace-analysis {transcript}")
+    else:
+        print(f"  /trace-analysis <transcript of session {session}>")
+    print(f"  /trace-watch {session}        (if the session is still running)")
+    print("Rotate any credential the ledger says was exposed. Then:")
+    print(f"  {review_command(session)} --ack")
+    if ack:
+        removed = marker_ack(session)
+        print(f"\nacknowledged: removed {removed} marker entr{'y' if removed == 1 else 'ies'} for {session}")
     return 0
 
 
-def _fail_open(event: dict[str, Any] | None) -> dict[str, Any]:
-    if event and is_cursor_payload(event):
-        return {"permission": "allow"}
-    return {"decision": "defer", "permission": "allow"}
+# ---------------------------------------------------------------------------
+# main
+# ---------------------------------------------------------------------------
+
+def main() -> int:
+    if len(sys.argv) > 1 and sys.argv[1] == "review":
+        return review_cli(sys.argv[2:])
+
+    raw = sys.stdin.read()
+    try:
+        event = json.loads(raw) if raw.strip() else {}
+        if not isinstance(event, dict):
+            raise ValueError("event is not an object")
+    except (json.JSONDecodeError, ValueError) as exc:
+        print(json.dumps(_fail_open(None, f"unreadable hook payload: {type(exc).__name__}")))
+        return 0
+
+    event_name = hook_event_name(event)
+    argv_event = argv_value("--event")
+
+    is_post = argv_event in {"post", "cursor-post"} or "post_tool_use" in event_name or event_name in CURSOR_POST_EVENTS
+    is_start = argv_event == "start" or event_name in START_EVENTS
+    is_stop = argv_event == "stop" or event_name in STOP_EVENTS
+
+    try:
+        if is_start:
+            print(json.dumps(start_decision(event)))
+        elif is_stop:
+            print(json.dumps(stop_decision(event)))
+        elif is_post:
+            print(json.dumps(post_decision(event)))
+        else:
+            print(json.dumps(pre_decision(event)))
+    except Exception as exc:  # noqa: BLE001 — fail open, loudly
+        print(json.dumps(_fail_open(event, f"guard error {type(exc).__name__}")))
+        print(f"live-ops-guard error: {type(exc).__name__}", file=sys.stderr)
+    return 0
 
 
 if __name__ == "__main__":

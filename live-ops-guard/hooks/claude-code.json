@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${HOME}/.grok/hooks/live-ops-guard/guard.py --event start --runtime grok",
+            "command": "python3 \"$HOME/.claude/hooks/live-ops-guard.py\" --event start --runtime claude",
             "timeout": 10
           }
         ]
@@ -13,10 +13,11 @@
     ],
     "PreToolUse": [
       {
+        "matcher": "Bash|mcp__.*",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${HOME}/.grok/hooks/live-ops-guard/guard.py --event pre --runtime grok",
+            "command": "python3 \"$HOME/.claude/hooks/live-ops-guard.py\" --event pre --runtime claude",
             "timeout": 10
           }
         ]
@@ -24,10 +25,11 @@
     ],
     "PostToolUse": [
       {
+        "matcher": "Bash|mcp__.*",
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${HOME}/.grok/hooks/live-ops-guard/guard.py --event post --runtime grok",
+            "command": "python3 \"$HOME/.claude/hooks/live-ops-guard.py\" --event post --runtime claude",
             "timeout": 10
           }
         ]
@@ -38,7 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 ${HOME}/.grok/hooks/live-ops-guard/guard.py --event stop --runtime grok",
+            "command": "python3 \"$HOME/.claude/hooks/live-ops-guard.py\" --event stop --runtime claude",
             "timeout": 10
           }
         ]
