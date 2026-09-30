@@ -18,6 +18,7 @@ from pathlib import Path
 HOME = tempfile.mkdtemp(prefix="live-ops-guard-test-")
 os.environ["LIVE_OPS_GUARD_HOME"] = HOME
 os.environ.pop("LIVE_OPS_GUARD_OPERATOR", None)
+os.environ["LIVE_OPS_GUARD_MODE"] = "gate"  # the classic cases below assume the gate
 
 ROOT = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location("live_ops_guard", ROOT / "guard.py")
@@ -174,6 +175,16 @@ CASES: list[tuple[str, dict, bool]] = [
     ("env prefix on a command is not a dump", {"toolName": "run_terminal_command", "toolInput": {"command": "env FOO=1 node x.js"}}, False),
     ("ls of a project dir is fine", {"toolName": "run_terminal_command", "toolInput": {"command": "ls -la src"}}, False),
     ("git status is fine", {"toolName": "run_terminal_command", "toolInput": {"command": "git status && git log -3"}}, False),
+    (
+        "heredoc body mentioning gh auth token is data, not a read",
+        {"toolName": "run_terminal_command", "toolInput": {"command": "cat > t.py <<'PY'\nx = 'gh auth token'\ny = 'op read op://v/i'\nprint('echo $GITHUB_TOKEN')\nPY\npython3 t.py"}},
+        False,
+    ),
+    (
+        "heredoc does not hide a real read outside it",
+        {"toolName": "run_terminal_command", "toolInput": {"command": "cat > t.txt <<'EOF'\nhello\nEOF\ncat ~/.aws/credentials"}},
+        True,
+    ),
     # --- placeholder overlap only (item 8) ---
     (
         "real token next to an html tag still asks",
@@ -245,7 +256,9 @@ def main() -> int:
     hso = post.get("hookSpecificOutput", {})
     check("additionalContext" in hso, "post redaction context")
     check("updatedToolOutput" in hso and "glpat-BBBB" not in json.dumps(post), "post string result redacted", json.dumps(post))
-    check("STILL in the transcript" in hso.get("additionalContext", ""), "post note is honest about runtime support")
+    check(post.get("decision") == "block" and "Options:" in post.get("reason", ""), "post exposure blocks the agent and carries the options", json.dumps(post)[:300])
+    check("EXPOSURE" in post.get("systemMessage", "") and "3. Recommended" in post.get("systemMessage", ""), "operator sees the exposure notice with a recommendation")
+    check("ask them to pick option 1, 2 or 3" in hso.get("additionalContext", ""), "agent is told to present options, not continue")
 
     cursor_post = mod.post_decision({"hook_event_name": "postToolUse", "cursor_version": "1.0.0", "mcp_server_name": "gitlab", "tool_name": "list_merge_requests", "tool_output": f"prefix {FAKE_GLPAT} suffix"})
     check("additional_context" in cursor_post and "glpat-BBBB" not in json.dumps(cursor_post), "cursor post redaction")
@@ -301,7 +314,7 @@ def main() -> int:
     text = stop.get("systemMessage", "")
     rows = mod.ledger_for_session(sid)
     counts = mod.session_counts(rows)
-    check(counts == {"asked": 3, "redactions": 1, "secret_reads": 2, "fail_opens": 1, "coerced": 0}, "session counts", str(counts))
+    check(counts == {"asked": 3, "noted": 0, "redactions": 1, "secret_reads": 1, "fail_opens": 1, "coerced": 0}, "session counts", str(counts))
     check(f"guarded calls asked: {counts['asked']}" in text and f"secret-like values redacted: {counts['redactions']}" in text, "stop summary matches ledger", text)
     check("Trace review required: YES" in text and f"review {sid}" in text, "stop summary points to review", text)
     clean = mod.stop_decision({"session_id": "s-clean", "transcript_path": "/tmp/c.jsonl", "hook_event_name": "Stop"})
@@ -331,6 +344,34 @@ def main() -> int:
     with redirect_stdout(buf):
         mod.review_cli([])
     check("s-fail" in buf.getvalue(), "review without a session lists what is pending")
+
+    # --- notify mode: commands run; only real exposure interrupts, with options ---
+    os.environ["LIVE_OPS_GUARD_MODE"] = "notify"
+    check(mod.mode_of() == "notify", "mode switch")
+    nb = {"session_id": "s-notify", "transcript_path": "/tmp/n.jsonl", "hook_event_name": "PreToolUse", "tool_name": "Bash"}
+    r = mod.pre_decision({**nb, "tool_input": {"command": "ssh box uptime"}})
+    check(not _is_ask(r) and "notify mode" in r.get("hookSpecificOutput", {}).get("additionalContext", ""), "notify: ssh runs, agent gets a note", str(r))
+    check("systemMessage" not in r, "notify: plain live call does not interrupt the operator", str(r))
+    r = mod.pre_decision({**nb, "tool_input": {"command": "cat .env"}})
+    check(not _is_ask(r), "notify: secret-store read runs (exposure is reported at post)", str(r))
+    r = mod.pre_decision({**nb, "tool_input": {"command": f"curl -H 'Authorization: Bearer {FAKE_PAT}' https://x"}})
+    check(not _is_ask(r) and "EXPOSURE" in r.get("systemMessage", "") and "secret-in-tool-input" not in r.get("systemMessage", "") and "tool INPUT" in r.get("systemMessage", ""), "notify: secret literal in input is an exposure notice", str(r)[:300])
+    check("ghp_AAAA" not in json.dumps(r), "notify: input exposure notice never echoes the value")
+    check("3. Recommended — Stop: rotate" in r.get("systemMessage", ""), "notify: input exposure recommends rotation", r.get("systemMessage", ""))
+    r = mod.post_decision({**nb, "hook_event_name": "PostToolUse", "tool_input": {"command": "cat .env"}, "tool_response": "X=1"})
+    check(r.get("decision") == "block" and "secret store was READ" in r.get("systemMessage", "") and "Stop and rotate" in r.get("systemMessage", ""), "notify: secret-store read blocks with rotate recommendation", str(r)[:300])
+    r = mod.post_decision({**nb, "hook_event_name": "PostToolUse", "tool_input": {"command": "bash x.sh"}, "tool_response": f"t {FAKE_PAT}"})
+    check("Proceed. Claude Code applied the redaction" in r.get("systemMessage", ""), "notify: redacted result on claude recommends proceed", r.get("systemMessage", ""))
+    r = mod.post_decision({"sessionId": "s-notify-grok", "toolName": "run_terminal_command", "toolInput": {"command": "bash x.sh"}, "toolResult": f"t {FAKE_PAT}"})
+    check("Stop and confirm in the transcript" in r.get("systemMessage", ""), "notify: redacted result on other runtimes recommends checking", r.get("systemMessage", ""))
+    rc = mod.post_decision({"cursor_version": "1.0.0", "conversation_id": "c9", "hook_event_name": "postToolUse", "mcp_server_name": "gitlab", "tool_name": "get_file", "tool_output": f"t {FAKE_GLPAT}"})
+    check("Options:" in rc.get("user_message", "") and "decision" not in rc, "notify: cursor gets the notice as user_message without a block key", str(rc)[:200])
+    counts = mod.session_counts(mod.ledger_for_session("s-notify"))
+    check(counts["noted"] == 2 and counts["redactions"] == 2 and counts["secret_reads"] == 1 and counts["asked"] == 0, "notify: counts (noted ssh + .env pre, input+result exposures, one read)", str(counts))
+    fo = mod._fail_open({**nb}, "unit")
+    check("Options:" in fo.get("systemMessage", "") and "unguarded" in fo.get("systemMessage", ""), "notify: fail-open uses the options form", str(fo)[:300])
+    check("--mode" in (ROOT / "guard.py").read_text(), "mode flag documented in script")
+    os.environ["LIVE_OPS_GUARD_MODE"] = "gate"
 
     # --- item 2 (user request): no hard-coded host or person in the guard ---
     src = (ROOT / "guard.py").read_text(encoding="utf-8")

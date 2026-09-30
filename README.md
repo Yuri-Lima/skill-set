@@ -14,7 +14,7 @@ Agent skills I reuse across Claude Code, Cursor, and Grok.
 | [`playwright-agent`](playwright-agent/) | `/playwright-agent` | Click and type in a real browser by **name** (Sign in, Email, a test id). Shared by ticket-demo login and claim-fix highlight. [Plain-language guide](playwright-agent/README.md). |
 | [`claude-rc-setup`](claude-rc-setup/) | `/claude-rc-setup` | Make Claude Code Remote Control a **systemd** service so claude.ai/code and the phone app connect without an SSH terminal. Linux only. [Local vs remote install](#claude-remote-control-setup). |
 | [`bug-hunter`](bug-hunter/) | `/bug-hunter` | Onboard a repo (scan + grill) into a **named** hunter, then hunt bugs the way that repo actually breaks. First questions are the real project name and slug. |
-| [`live-ops-guard`](live-ops-guard/) | `/live-ops-guard`, `/live-ops-guard review` | Hook + read-only agent that asks before live TeamCity/GitLab writes, leaked tokens, secret-store reads (`cat .env`, `gh auth token`), or **any SSH** — on Grok, Claude Code and Cursor. Every ask/redaction/fail-open goes to a ledger; a session that exposed a secret is marked `NEEDS_TRACE_REVIEW` until a person runs `review` and `--ack`. Do not commit real hosts/IPs. |
+| [`live-ops-guard`](live-ops-guard/) | `/live-ops-guard`, `/live-ops-guard review` | Hooks + read-only agent for live TeamCity/GitLab writes, leaked tokens, secret-store reads (`cat .env`, `gh auth token`) and **any SSH** — on Grok, Claude Code and Cursor. Default `notify` mode lets calls run and **interrupts only on a real exposure**, with options Proceed / Stop / Recommended instead of a yes/no; `gate` mode holds every live call first. Everything goes to a ledger; an exposed session is marked `NEEDS_TRACE_REVIEW` until a person runs `review` and `--ack`. Do not commit real hosts/IPs. |
 
 ```
 skill-set/
@@ -144,6 +144,9 @@ Paste live SSH Host aliases into `~/.grok/hooks/live-ops-guard/live-hosts.txt`
 and self-hosted GitLab hostnames into `gitlab-hosts.txt` next to it — on the
 machine only, never commit those files. Every `ssh`/`scp`/`sftp`/`sshfs`
 asks, including `uptime` on an unlisted host; so does reading a secret store.
+
+By default (`notify` mode) live calls run and only a real exposure interrupts, with
+options rather than a question; `LIVE_OPS_GUARD_MODE=gate` restores the hold-first behaviour.
 
 The guard keeps a trail: `ledger.jsonl` (one line per ask / redaction /
 fail-open, never the payload) and `NEEDS_TRACE_REVIEW` (sessions that

@@ -23,8 +23,19 @@ Awareness files (all next to this script, or under $LIVE_OPS_GUARD_HOME):
                       read, or the guard failed open). Not cleared by the
                       guard itself: `guard.py review <session> --ack`.
 
+Modes (--mode, or $LIVE_OPS_GUARD_MODE; default "notify"):
+
+  notify  Commands run. The guard records every finding in the ledger and,
+          when a REAL exposure happens (secret-like value in a tool result,
+          secret store read, secret literal in a tool input, fail-open), it
+          interrupts with an exposure notice and options — proceed / stop /
+          recommended — instead of a yes/no question.
+  gate    The original behaviour: every live write, ssh and secret read is
+          held with a permission "ask" before it runs. Exposure notices are
+          the same as in notify mode.
+
 CLI:
-  guard.py --event pre|post|start|stop [--runtime grok|cursor|claude]
+  guard.py --event pre|post|start|stop [--runtime grok|cursor|claude] [--mode notify|gate]
   guard.py review [SESSION|--last] [--ack]
 """
 
@@ -50,6 +61,17 @@ MARKER_FILE = os.path.join(GUARD_HOME, "NEEDS_TRACE_REVIEW")
 # How the guard addresses the person at the keyboard. Generic on purpose:
 # no real name or host belongs in this public file.
 OPERATOR = os.environ.get("LIVE_OPS_GUARD_OPERATOR") or "Dear Lazy User"
+
+MODES = ("notify", "gate")
+
+
+def mode_of() -> str:
+    """notify (default) or gate. --mode wins over $LIVE_OPS_GUARD_MODE."""
+    forced = argv_value("--mode")
+    if forced in MODES:
+        return forced
+    env = (os.environ.get("LIVE_OPS_GUARD_MODE") or "").lower()
+    return env if env in MODES else "notify"
 
 # ---------------------------------------------------------------------------
 # Secret patterns
@@ -339,10 +361,20 @@ def split_shell_words(command: str) -> list[str]:
     return words
 
 
+HEREDOC_RE = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1[^\n]*\n.*?\n\s*\2[ \t]*(?=\n|$)", re.DOTALL)
+
+
+def strip_heredocs(command: str) -> str:
+    """A heredoc body is data being written, not a command being run.
+
+    `cat > test.py <<'PY' ... gh auth token ... PY` must not read as a secret read."""
+    return HEREDOC_RE.sub("<<HEREDOC_BODY_STRIPPED", command)
+
+
 def command_segments(command: str) -> list[str]:
     return [
         part.strip()
-        for part in re.split(r"\s*(?:&&|\|\||;|\n)\s*", command)
+        for part in re.split(r"\s*(?:&&|\|\||;|\n)\s*", strip_heredocs(command))
         if part.strip()
     ]
 
@@ -944,7 +976,7 @@ def classify(event: dict[str, Any]) -> list[str]:
         if is_gitlab_tool(nested):
             findings.extend(classify_gitlab_tool(nested, tool_input))
     if command:
-        if SUSPICIOUS_SHELL.search(command):
+        if SUSPICIOUS_SHELL.search(strip_heredocs(command)):
             findings.append("suspicious shell command")
         findings.extend(secret_read_findings(command))
         findings.extend(remote_access_findings(command, load_live_hosts()))
@@ -1103,15 +1135,19 @@ def ledger_for_session(session: str) -> list[dict[str, Any]]:
 
 
 def session_counts(rows: list[dict[str, Any]]) -> dict[str, int]:
-    counts = {"asked": 0, "redactions": 0, "secret_reads": 0, "fail_opens": 0, "coerced": 0}
+    counts = {"asked": 0, "noted": 0, "redactions": 0, "secret_reads": 0, "fail_opens": 0, "coerced": 0}
     for row in rows:
         decision = str(row.get("decision") or "")
         kinds = [str(k) for k in row.get("kinds") or []]
         if decision == "ask":
             counts["asked"] += 1
+        if decision == "allow-noted":
+            counts["noted"] += 1
+        if decision == "exposure" and str(row.get("stage")) == "pre":
+            counts["redactions"] += 1  # secret literal in input: exposed, not redactable
         if decision == "redacted":
             counts["redactions"] += 1
-        if decision == "exposure" or any(k.startswith("secret-read") for k in kinds):
+        if str(row.get("stage")) == "post" and any(k.startswith("secret-read") for k in kinds):
             counts["secret_reads"] += 1
         if decision == "fail-open":
             counts["fail_opens"] += 1
@@ -1143,11 +1179,11 @@ def findings_reason(findings: list[str]) -> str:
 
 def fail_open_message(event: dict[str, Any] | None, why: str) -> str:
     session = session_id_of(event)
-    return (
+    head = (
         f"{OPERATOR}, live-ops-guard could NOT evaluate this call ({why}) and let it through. "
-        "Treat it as unguarded. The session is marked for trace review: "
-        f"`{review_command(session)}`."
+        "Treat it as unguarded."
     )
+    return head + "\n" + exposure_notice("guard-fail-open", [why], session, runtime_of(event))
 
 
 def exposure_note(kinds: list[str], session: str, runtime: str, redaction_applied: bool) -> str:
@@ -1164,6 +1200,70 @@ def exposure_note(kinds: list[str], session: str, runtime: str, redaction_applie
         base += " The original values are in the transcript."
     base += f" Session {session} ({runtime}) is marked for trace review: `{review_command(session)}`."
     return base
+
+
+# What happened → (one-line what, recommended option). Kept short: this is read
+# in a permission-style interruption, not a report.
+EXPOSURE_WHERE = {
+    "secret-in-tool-result": "a secret-like value came back in a tool RESULT",
+    "secret-store-read": "a secret store was READ (its contents are now in the transcript)",
+    "secret-in-tool-input": "the agent put a secret-like value in a tool INPUT (it is already in the transcript)",
+    "guard-fail-open": "the guard could not evaluate a call and let it through unguarded",
+}
+
+
+def recommended_for(where: str, kinds: list[str], runtime: str, redaction_applied: bool) -> str:
+    if where == "secret-in-tool-result" and redaction_applied and runtime == "claude":
+        return (
+            "Proceed. Claude Code applied the redaction before the value reached the model "
+            "(verified for Bash and MCP results); still run the trace review at the end."
+        )
+    if where == "secret-in-tool-result" and redaction_applied:
+        return (
+            "Stop and confirm in the transcript whether the value was actually replaced; "
+            "if it is still there, rotate it before proceeding."
+        )
+    if where == "secret-store-read":
+        return "Stop and rotate what that store held, then proceed. Values from a secret store are not pattern-redacted."
+    if where == "secret-in-tool-input":
+        return "Stop: rotate the value now (it cannot be unwritten from the transcript), then re-run with a ${VAR} reference."
+    if where == "guard-fail-open":
+        return "Proceed, but read the ledger row for this call and re-run it in gate mode if it touched a live host."
+    return "Stop and review the trace before doing anything else on a live host."
+
+
+def exposure_notice(
+    where: str,
+    kinds: list[str],
+    session: str,
+    runtime: str,
+    tool: str = "",
+    redaction_applied: bool = False,
+) -> str:
+    """The interruption the operator sees: what was exposed, and three ways forward.
+
+    Not a yes/no question. The agent is told to present these options and wait."""
+    what = EXPOSURE_WHERE.get(where, where)
+    shown_tool = f" (`{tool}`)" if tool else ""
+    lines = [
+        f"EXPOSURE — {OPERATOR}, {what}{shown_tool}: {', '.join(kinds) or 'unknown kind'}.",
+        f"Session {session} ({runtime}) is now marked NEEDS_TRACE_REVIEW; the guard will not clear it.",
+        "",
+        "Options:",
+        f"  1. Proceed — keep working; review the trace at the end: {review_command(session)}",
+        "  2. Stop — end here; rotate the exposed credential now.",
+        f"  3. Recommended — {recommended_for(where, kinds, runtime, redaction_applied)}",
+    ]
+    return "\n".join(lines)
+
+
+def exposure_agent_instruction(notice: str) -> str:
+    return (
+        "live-ops-guard EXPOSURE. Stop the current task. Show the operator this notice verbatim "
+        "and ask them to pick option 1, 2 or 3 (use your ask-the-user tool if you have one). "
+        "Do not continue, retry, or quote the exposed value until they choose. Never run `--ack` for them.\n\n"
+        + notice
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1214,6 +1314,24 @@ def _pre_output(runtime: str, decision: str, reason: str = "", loud: str = "") -
     return out
 
 
+def _pre_notify_output(runtime: str, agent_note: str, user_note: str = "") -> dict[str, Any]:
+    """Allow, with context for the agent and (optionally) a notice for the operator."""
+    if runtime == "cursor":
+        out: dict[str, Any] = {"permission": "allow", "agent_message": agent_note}
+        if user_note:
+            out["user_message"] = user_note
+        return out
+    if runtime == "claude":
+        out = {"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": agent_note}}
+        if user_note:
+            out["systemMessage"] = user_note
+        return out
+    out = {"decision": "allow", "reason": agent_note}
+    if user_note:
+        out["systemMessage"] = user_note
+    return out
+
+
 def pre_decision(event: dict[str, Any]) -> dict[str, Any]:
     normalized = normalize_event(event)
     findings = classify(event)
@@ -1224,8 +1342,33 @@ def pre_decision(event: dict[str, Any]) -> dict[str, Any]:
         if normalized.get("_coerced_shape"):
             ledger_write(normalized, stage="pre", decision="allow", tool=tool, kinds=kinds)
         return _pre_output(runtime, "allow")
-    ledger_write(normalized, stage="pre", decision="ask", tool=tool, kinds=kinds)
-    return _pre_output(runtime, "ask", findings_reason(findings))
+
+    if mode_of() == "gate":
+        ledger_write(normalized, stage="pre", decision="ask", tool=tool, kinds=kinds)
+        return _pre_output(runtime, "ask", findings_reason(findings))
+
+    # notify mode: the call runs. A secret literal in the INPUT is already an exposure.
+    secret_kinds = [k for k in kinds if k.startswith("secret:")]
+    if secret_kinds:
+        session = session_id_of(normalized)
+        ledger_write(normalized, stage="pre", decision="exposure", tool=tool, kinds=kinds)
+        marker_add(normalized, "secret-in-tool-input", secret_kinds)
+        notice = exposure_notice(
+            "secret-in-tool-input",
+            [k.split(":", 1)[1] for k in secret_kinds],
+            session,
+            runtime,
+            tool=tool,
+        )
+        return _pre_notify_output(runtime, exposure_agent_instruction(notice), notice)
+
+    ledger_write(normalized, stage="pre", decision="allow-noted", tool=tool, kinds=kinds)
+    agent_note = (
+        "live-ops-guard (notify mode) let this call run and recorded it in the ledger: "
+        + "; ".join(findings)
+        + ". If it is a live write or ssh the operator did not ask for, stop and say so."
+    )
+    return _pre_notify_output(runtime, agent_note)
 
 
 def _result_blob(event: dict[str, Any]) -> Any:
@@ -1268,10 +1411,12 @@ def post_decision(event: dict[str, Any]) -> dict[str, Any]:
         marker_add(normalized, "secret-store-read", kinds)
 
     shown_kinds = secrets + [k.split(":", 1)[1] + " (read)" for k in read_kinds]
+    where = "secret-in-tool-result" if secrets else "secret-store-read"
+    notice = exposure_notice(where, shown_kinds, session, runtime, tool=name, redaction_applied=bool(secrets))
+    instruction = exposure_agent_instruction(notice)
 
     if runtime == "cursor":
-        note = exposure_note(shown_kinds, session, runtime, redaction_applied=bool(secrets))
-        out: dict[str, Any] = {"additional_context": note}
+        out: dict[str, Any] = {"additional_context": instruction, "user_message": notice}
         if secrets:
             redacted = redact_text(text)
             if event.get("mcp_server_name") or "gitlab__" in name or "teamcity__" in name:
@@ -1281,13 +1426,16 @@ def post_decision(event: dict[str, Any]) -> dict[str, Any]:
                     out["updated_mcp_tool_output"] = {"redacted": redacted}
         return out
 
-    note = exposure_note(shown_kinds, session, runtime, redaction_applied=bool(secrets))
+    # decision=block does not undo the call (it already ran); it stops the agent and
+    # hands it the notice, so the operator gets the options instead of a silent continue.
     hook_out: dict[str, Any] = {
+        "decision": "block",
+        "reason": instruction,
         "hookSpecificOutput": {
             "hookEventName": "PostToolUse",
-            "additionalContext": note,
+            "additionalContext": instruction,
         },
-        "systemMessage": note,
+        "systemMessage": notice,
     }
     if secrets:
         # Always request redaction, for MCP and shell results alike. Whether the
@@ -1338,6 +1486,7 @@ def stop_summary(session: str) -> str:
     lines = [
         f"live-ops-guard — session {session} summary for {OPERATOR}",
         f"  guarded calls asked: {counts['asked']}",
+        f"  live calls allowed and noted (notify mode): {counts['noted']}",
         f"  secret-like values redacted: {counts['redactions']}",
         f"  secret-store reads: {counts['secret_reads']}",
         f"  guard fail-opens: {counts['fail_opens']}",
