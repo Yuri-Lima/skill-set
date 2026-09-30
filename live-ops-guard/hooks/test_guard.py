@@ -477,6 +477,19 @@ def main() -> int:
     check(set(cstart) == {"additional_context"}, "cursor start: additional_context only", str(cstart)[:100])
     os.environ["LIVE_OPS_GUARD_MODE"] = "gate"
 
+    # --- trial C finding: env-style names and store-read precedence ---
+    os.environ["LIVE_OPS_GUARD_MODE"] = "notify"
+    env_text = "DB_HOST=localhost\nDB_PASSWORD=Sup3rS3cretValue2024xyz\nGITHUB_TOKEN=ghq1abcdefgh2345ijkl\nAWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI2K7MDENG3bPxRfiCY\nAPI_KEY=k3yValueForTrial2026abc\n"
+    red = mod.redact_text(env_text)
+    check("Sup3rS3cret" not in red and "ghq1abcd" not in red and "wJalrXUt" not in red and "k3yValue" not in red, "env-style names (X_PASSWORD, X_TOKEN, X_SECRET_ACCESS_KEY) are redacted", red)
+    check("DB_HOST=localhost" in red, "non-secret env line untouched")
+    check(mod.find_secrets("password: process.env.DB_PASSWORD\nDB_PASSWORD = os.environ['DB_PASSWORD']") == [], "identifiers still not values after the prefix change")
+    tr = mod.post_decision({"session_id": "s-envread", "transcript_path": "/tmp/e.jsonl", "hook_event_name": "PostToolUse", "tool_name": "Bash", "tool_use_id": "er1", "tool_input": {"command": "cat .env"}, "tool_response": env_text})
+    msg = tr.get("systemMessage", "")
+    check("a secret store was READ" in msg and "Stop and rotate everything" in msg, "store read outranks a pattern hit in the notice", msg[:400])
+    check("Sup3rS3cret" not in json.dumps(tr) and "k3yValue" not in json.dumps(tr), "store-read notice and replacement carry no value")
+    os.environ["LIVE_OPS_GUARD_MODE"] = "gate"
+
     # --- item 2 (user request): no hard-coded host or person in the guard ---
     src = (ROOT / "guard.py").read_text(encoding="utf-8")
     banned = ("nova." + "teachx", "yu" + "ri")  # spelled apart so this file is not itself a hit
