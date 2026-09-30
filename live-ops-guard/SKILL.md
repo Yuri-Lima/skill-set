@@ -135,6 +135,30 @@ while it is still running). Rotate whatever the ledger says was exposed, then
 `--ack`. `/live-ops-guard review` in a session means: run that command and
 report the output; do not `--ack` on the operator's behalf.
 
+### Why redact at all, if the value is already exposed
+
+Redaction does not undo the exposure: the value hit the disk when the tool
+ran, and on Grok the session record keeps it. Redaction is **containment**. An
+unredacted value in the model's context gets copied onward — into commit
+messages, PR bodies, files the agent writes, sub-agents, and MCP servers that
+may belong to someone else. Replacing the model's copy stops that
+amplification; on Claude Code the transcript holds the redacted copy too, so a
+resume or an export does not carry it. The costs are that the model cannot
+see a value it legitimately needed (use `${VAR}` instead), and that a false
+positive corrupts what it reads — which is why the detectors have an eval
+corpus (below). `LIVE_OPS_GUARD_REDACT=off` turns replacement off; the
+notice then says so and recommends rotation, and the ledger and marker are
+written exactly as before.
+
+### Detection quality is measured
+
+`evals/detection/cases.jsonl` is a labelled corpus (true positives, false
+positives, near-misses, secret-store reads) and `scripts/eval-detection.py`
+scores the detectors against it: precision and recall per kind, a `must`
+tier that fails the test suite, a `stretch` tier that only reports. A miss or
+a false alarm seen in a real session becomes a case first, then a fix. See
+`evals/detection/README.md`.
+
 ### Honesty about redaction
 
 The post hook asks the runtime to replace the tool result with a redacted

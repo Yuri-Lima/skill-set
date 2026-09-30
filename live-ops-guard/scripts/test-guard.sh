@@ -88,6 +88,9 @@ python3 "$G" review smoke-1 --ack | grep -q "acknowledged" && echo "ok   review 
 python3 "$DIR/hooks/test_guard.py"
 echo "python classify tests passed"
 
+python3 "$DIR/scripts/eval-detection.py" --quiet
+echo "detection eval: all must cases pass"
+
 if [[ "$fail" -ne 0 ]]; then
   exit 1
 fi

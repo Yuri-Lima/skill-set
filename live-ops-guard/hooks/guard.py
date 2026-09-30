@@ -66,6 +66,13 @@ OPERATOR = os.environ.get("LIVE_OPS_GUARD_OPERATOR") or "Dear Lazy User"
 MODES = ("notify", "gate")
 
 
+def redaction_enabled() -> bool:
+    """LIVE_OPS_GUARD_REDACT=off keeps the value in the model's copy. The exposure already
+    happened on disk either way; redaction is containment — it stops the agent copying the
+    value into commits, PR bodies, files, sub-agents and MCP servers. Default on."""
+    return (os.environ.get("LIVE_OPS_GUARD_REDACT") or "on").lower() not in {"off", "0", "false", "no"}
+
+
 def mode_of() -> str:
     """notify (default) or gate. --mode wins over $LIVE_OPS_GUARD_MODE."""
     forced = argv_value("--mode")
@@ -87,27 +94,45 @@ PLACEHOLDER_RE = re.compile(
 SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("private-key", re.compile(r"-----BEGIN [A-Z0-9 ]{0,40}PRIVATE KEY-----")),
     ("gitlab-pat", re.compile(r"\bglpat-[A-Za-z0-9_\-]{20,}")),
+    ("gitlab-runner-token", re.compile(r"\bglrt-[A-Za-z0-9_\-]{20,}")),
+    ("gitlab-deploy-token", re.compile(r"\bgldt-[A-Za-z0-9_\-]{20,}")),
+    ("gitlab-trigger-token", re.compile(r"\bglptt-[A-Za-z0-9_\-]{20,}")),
     ("github-pat", re.compile(r"\b(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}")),
     ("github-fine-grained", re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}")),
     ("xai-key", re.compile(r"\bxai-[A-Za-z0-9]{20,}")),
+    ("anthropic-key", re.compile(r"\bsk-ant-[A-Za-z0-9_\-]{20,}")),
+    ("openai-project-key", re.compile(r"\bsk-proj-[A-Za-z0-9_\-]{20,}")),
     ("openai-key", re.compile(r"\bsk-[A-Za-z0-9]{20,}")),
+    ("stripe-key", re.compile(r"\b[sr]k_(?:live|test)_[A-Za-z0-9]{16,}")),
+    ("google-api-key", re.compile(r"\bAIza[0-9A-Za-z_\-]{35}")),
+    ("hf-token", re.compile(r"\bhf_[A-Za-z0-9]{20,}")),
+    ("sendgrid-key", re.compile(r"\bSG\.[A-Za-z0-9_\-]{16,}\.[A-Za-z0-9_\-]{16,}")),
+    ("telegram-bot-token", re.compile(r"\b\d{8,10}:[A-Za-z0-9_\-]{35}\b")),
     ("aws-access-key", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
     ("slack-token", re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}")),
     ("npm-token", re.compile(r"\bnpm_[A-Za-z0-9]{20,}")),
     ("jwt", re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}")),
     (
         "bearer-token",
-        re.compile(r"(?i)\bBearer\s+(?!\$\{)([A-Za-z0-9._\-+/=]{24,})"),
+        re.compile(r"(?i)\bBearer[ \t]+(?!\$\{)([A-Za-z0-9._\-+/=]{24,})"),
+    ),
+    (
+        "basic-auth",
+        re.compile(r"(?i)\bBasic[ \t]+(?!\$\{)([A-Za-z0-9+/]{16,}={0,2})"),
     ),
     (
         "assignment-secret",
         re.compile(
             # key: DB_PASSWORD, POSTGRES_PASSWORD, GITHUB_TOKEN, AWS_SECRET_ACCESS_KEY, api_key …
             # (a \w* prefix, because '_' is a word char and \bpassword misses DB_PASSWORD)
-            r"(?i)\b\w*(api[_-]?key|access[_-]?token|auth[_-]?token|secret|password|passwd|private[_-]?key|_token|_key|token)"
-            # value: 16+ token chars with at least one digit and one lowercase letter, no dots —
-            # so `password: process.env.DB_PASSWORD` or `SECRET = SOME_CONSTANT` is code, not a value
-            r"\s*[:=]\s*['\"]?(?!\$\{)(?=[A-Za-z0-9_\-+/=]*\d)(?=[A-Za-z0-9_\-+/=]*[a-z])"
+            # (the whole key is group 1 so benign names — cache_key, public_key — can be excluded)
+            r"(?i)\b(\w*(?:api[_-]?key|access[_-]?token|auth[_-]?token|secret|password|passwd|private[_-]?key|_token|_key|token))"
+            # optional closing quote: JSON keys are "password": "…"
+            r"['\"]?\s*[:=]\s*['\"]?(?!\$\{)"
+            # value: 16+ token chars with at least one digit and one LOWERCASE letter (the (?-i:)
+            # matters under (?i)), no dots — so `password: process.env.DB_PASSWORD`,
+            # `SECRET = SOME_CONSTANT` and `YOUR_API_KEY_HERE_1234` are not values
+            r"(?=[A-Za-z0-9_\-+/=]*\d)(?=[A-Za-z0-9_\-+/=]*(?-i:[a-z]))"
             r"([A-Za-z0-9_\-+/=]{16,})(?![A-Za-z0-9_\-+/=.])"
         ),
     ),
@@ -552,7 +577,7 @@ def secret_read_findings(command: str) -> list[str]:
                     seen.add(kind)
                     findings.append(f"secret-read({kind})")
         for kind, pattern in SECRET_READ_COMMAND_PATTERNS:
-            if kind not in seen and pattern.search(body):
+            if kind not in seen and (pattern.search(body) or pattern.search(segment)):
                 seen.add(kind)
                 findings.append(f"secret-read({kind})")
     return findings
@@ -776,6 +801,52 @@ def normalize_event(event: dict[str, Any]) -> dict[str, Any]:
 # Secrets: find / redact
 # ---------------------------------------------------------------------------
 
+# Key names that hold an identifier or a public value, never a secret.
+BENIGN_ASSIGNMENT_KEYS = {
+    "cache_key", "cachekey", "idempotency_key", "partition_key", "sort_key", "primary_key",
+    "foreign_key", "s3_key", "object_key", "storage_key", "public_key", "publickey", "pubkey",
+    "key_id", "access_key_id", "aws_access_key_id", "kms_key_id", "ssh_key", "ssh_key_path",
+    "key_path", "key_file", "row_key", "hash_key", "range_key", "translation_key", "i18n_key",
+    "unique_key", "index_key", "dedupe_key", "session_key_name", "token_type", "token_name",
+    "secret_name", "secret_id", "password_field", "password_policy", "publishable_key",
+}
+BENIGN_VALUE_PREFIXES = ("pk_live_", "pk_test_", "ssh-rsa", "ssh-ed25519", "ecdsa-sha2")
+
+
+def _benign_assignment(match: re.Match[str]) -> bool:
+    key = (match.group(1) or "").lower()
+    value = match.group(2) or ""
+    if key in BENIGN_ASSIGNMENT_KEYS or key.endswith("_key_id") or key.endswith("_id"):
+        return True
+    return value.lower().startswith(BENIGN_VALUE_PREFIXES)
+
+
+def secret_matches(text: str) -> list[tuple[int, int, str]]:
+    """Every secret hit as (start, end, kind), one source of truth for find / redact / evidence.
+
+    Rules: a placeholder overlapping the hit exempts it; a benign assignment key or a
+    public value is skipped; the generic assignment-secret yields to a specific detector
+    that overlaps it (GITHUB_TOKEN=ghp_… is one github-pat, not two findings)."""
+    hits: list[tuple[int, int, str]] = []
+    for kind, pattern in SECRET_PATTERNS:
+        for match in pattern.finditer(text):
+            if ignore_span(text, match.start(), match.end()):
+                continue
+            if kind == "assignment-secret" and _benign_assignment(match):
+                continue
+            hits.append((match.start(), match.end(), kind))
+    specific = [h for h in hits if h[2] != "assignment-secret"]
+    kept: list[tuple[int, int, str]] = list(specific)
+    for start, end, kind in hits:
+        if kind != "assignment-secret":
+            continue
+        if any(s < end and e > start for s, e, _ in specific):
+            continue
+        kept.append((start, end, kind))
+    kept.sort()
+    return kept
+
+
 def ignore_span(text: str, start: int, end: int) -> bool:
     """Only a placeholder that OVERLAPS the match exempts it.
 
@@ -791,27 +862,26 @@ def ignore_span(text: str, start: int, end: int) -> bool:
 
 def find_secrets(text: str) -> list[str]:
     found: list[str] = []
-    seen: set[str] = set()
-    for kind, pattern in SECRET_PATTERNS:
-        for match in pattern.finditer(text):
-            if ignore_span(text, match.start(), match.end()):
-                continue
-            if kind not in seen:
-                seen.add(kind)
-                found.append(kind)
+    for _start, _end, kind in secret_matches(text):
+        if kind not in found:
+            found.append(kind)
     return found
 
 
 def redact_text(text: str) -> str:
-    redacted = text
-    for kind, pattern in SECRET_PATTERNS:
-        def repl(match: re.Match[str], kind: str = kind) -> str:
-            if ignore_span(match.string, match.start(), match.end()):
-                return match.group(0)
-            return f"***REDACTED:{kind}***"
-
-        redacted = pattern.sub(repl, redacted)
-    return redacted
+    hits = secret_matches(text)
+    if not hits:
+        return text
+    out: list[str] = []
+    pos = 0
+    for start, end, kind in hits:
+        if start < pos:
+            continue  # nested inside a previous replacement
+        out.append(text[pos:start])
+        out.append(f"***REDACTED:{kind}***")
+        pos = end
+    out.append(text[pos:])
+    return "".join(out)
 
 
 # ---------------------------------------------------------------------------
@@ -1275,6 +1345,11 @@ EXPOSURE_WHERE = {
 
 
 def recommended_for(where: str, kinds: list[str], runtime: str, redaction_applied: bool) -> str:
+    if where == "secret-in-tool-result" and not redaction_enabled():
+        return (
+            "Stop and rotate. Redaction is off (LIVE_OPS_GUARD_REDACT=off), so the value reached the "
+            "model and can be copied into commits, files or other tools from here."
+        )
     if where == "secret-in-tool-result" and redaction_applied and runtime == "claude":
         return (
             "Proceed. Claude Code applied the redaction before the value reached the model "
@@ -1313,13 +1388,7 @@ def evidence_lines(text: str, max_matches: int = 3, width: int = 140) -> tuple[i
     """(match count, redacted one-line snippets of where the secret patterns hit).
 
     Enough for the operator to judge "real or false positive" without opening the trace."""
-    hits: list[tuple[int, str]] = []
-    for kind, pattern in SECRET_PATTERNS:
-        for match in pattern.finditer(text):
-            if ignore_span(text, match.start(), match.end()):
-                continue
-            hits.append((match.start(), kind))
-    hits.sort()
+    hits = [(start, kind) for start, _end, kind in secret_matches(text)]
     snippets: list[str] = []
     seen_lines: set[int] = set()
     for pos, kind in hits:
@@ -1631,7 +1700,7 @@ def post_decision(event: dict[str, Any]) -> dict[str, Any]:
     where = "secret-store-read" if read_kinds else "secret-in-tool-result"
     is_mcp = bool(event.get("mcp_server_name") or "__" in name or name.startswith("mcp__"))
     # Cursor honours a replacement for MCP output only; a shell result cannot be redacted there.
-    redaction_applied = bool(secrets) and not (runtime == "cursor" and not is_mcp)
+    redaction_applied = bool(secrets) and redaction_enabled() and not (runtime == "cursor" and not is_mcp)
     evidence: list[str]
     if secrets and not read_kinds:
         count, snippets = evidence_lines(text)
@@ -1653,7 +1722,7 @@ def post_decision(event: dict[str, Any]) -> dict[str, Any]:
     if runtime == "cursor":
         # postToolUse honours additional_context and updated_mcp_tool_output only.
         out: dict[str, Any] = {"additional_context": instruction}
-        if secrets and is_mcp:
+        if secrets and is_mcp and redaction_enabled():
             if isinstance(result, str):
                 try:
                     out["updated_mcp_tool_output"] = json.loads(redact_text(result))
@@ -1674,7 +1743,7 @@ def post_decision(event: dict[str, Any]) -> dict[str, Any]:
         },
         "systemMessage": notice,
     }
-    if secrets:
+    if secrets and redaction_enabled():
         # Same shape back, secrets replaced. Grok validates a built-in tool's replacement
         # against its own tagged shape, so the envelope must survive untouched.
         hook_out["hookSpecificOutput"]["updatedToolOutput"] = redact_result(result)
@@ -1877,12 +1946,7 @@ def transcript_tool_calls(path: str) -> list[dict[str, Any]]:
 def paragraphs_around(text: str, max_paragraphs: int = 5, context: int = 1) -> list[str]:
     """Redacted paragraphs (line before, matched line, line after) around each secret hit."""
     lines = text.split("\n")
-    hit_lines: list[int] = []
-    for _kind, pattern in SECRET_PATTERNS:
-        for match in pattern.finditer(text):
-            if ignore_span(text, match.start(), match.end()):
-                continue
-            hit_lines.append(text.count("\n", 0, match.start()))
+    hit_lines: list[int] = [text.count("\n", 0, start) for start, _end, _kind in secret_matches(text)]
     out: list[str] = []
     done: set[int] = set()
     for ln in sorted(set(hit_lines)):
