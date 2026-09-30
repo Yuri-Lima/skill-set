@@ -80,11 +80,17 @@ line what you are about to do on the live host. The watcher agent below is for
 
 `$SKILL_DIR` is the folder that contains this `SKILL.md`.
 
-| Runtime | Events | Config |
-|---------|--------|--------|
-| **Grok** | `SessionStart` / `PreToolUse` / `PostToolUse` / `Stop` | `~/.grok/hooks/live-ops-guard.json` |
-| **Claude Code** | `SessionStart` / `PreToolUse` / `PostToolUse` / `Stop` | `~/.claude/settings.json` (merged from `hooks/claude-code.json`) |
-| **Cursor** | `sessionStart` / `beforeMCPExecution` / `beforeShellExecution` / `postToolUse` / `stop` | `~/.cursor/hooks.json` |
+| Runtime | Events | Config | What the runtime honours (verified / per its docs) |
+|---------|--------|--------|------------------------------------------------------|
+| **Grok** | `SessionStart` / `PreToolUse` / `PostToolUse` / `Stop` | `~/.grok/hooks/live-ops-guard.json` | pre: `decision` + `additionalContext`; post: `decision: block` + `additionalContext` + `updatedToolOutput` (must keep the tool's tagged shape; replaces the **model's** copy only, the session record keeps the original); `SessionStart` stdout ignored → the pending-review nag rides the first tool call; `Stop`: `additionalContext` keeps the agent one round to relay the summary, only when a review is due |
+| **Claude Code** | `SessionStart` / `PreToolUse` / `PostToolUse` / `Stop` | `~/.claude/settings.json` (merged from `hooks/claude-code.json`) | pre: `permissionDecision` + `additionalContext` + `systemMessage`; post: `decision: block` + `additionalContext` + `updatedToolOutput` (verified: the transcript holds the redacted copy); `SessionStart`/`Stop`: `systemMessage` to the operator |
+| **Cursor** | `sessionStart` / `beforeMCPExecution` / `beforeShellExecution` / `postToolUse` / `stop` | `~/.cursor/hooks.json` | before*: `permission` + `user_message` + `agent_message`; `postToolUse`: `additional_context` + `updated_mcp_tool_output` (**MCP only — a shell result cannot be redacted**, the notice says so); `sessionStart`: `additional_context`; `stop`: `followup_message` |
+
+The **payload** decides which runtime an event came from, not the `--runtime` flag:
+Grok loads `~/.claude/settings.json` and `~/.cursor/hooks.json` as well as its own
+config, so one tool call can reach this script through two or three entries. The
+guard dedupes by session + tool-use id (`dedupe.txt`), so the operator gets one
+notice, one ledger row, and one summary per event whichever entry delivered it.
 
 Same script for all three: `~/.grok/hooks/live-ops-guard/guard.py` (Claude Code
 and Cursor get a one-line entry file that runs it). It flags:
