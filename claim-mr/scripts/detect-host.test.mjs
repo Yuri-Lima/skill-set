@@ -8,8 +8,8 @@ test('parseGitRemote https and ssh', () => {
     owner: 'acme',
     repo: 'app',
   });
-  assert.deepEqual(parseGitRemote('git@nova.teachx.ai:trace-analysis/ipt.git'), {
-    host: 'nova.teachx.ai',
+  assert.deepEqual(parseGitRemote('git@gitlab.example.com:trace-analysis/ipt.git'), {
+    host: 'gitlab.example.com',
     owner: 'trace-analysis',
     repo: 'ipt',
   });
@@ -18,7 +18,7 @@ test('parseGitRemote https and ssh', () => {
 test('detectProvider from host and href', () => {
   assert.equal(detectProvider('github.com', 'https://github.com/acme/app/pull/12'), 'github');
   assert.equal(
-    detectProvider('nova.teachx.ai', 'https://nova.teachx.ai/g/p/-/merge_requests/54'),
+    detectProvider('gitlab.example.com', 'https://gitlab.example.com/g/p/-/merge_requests/54'),
     'gitlab',
   );
   assert.equal(detectProvider('gitlab.example.com', ''), 'gitlab');
@@ -34,7 +34,7 @@ test('parseTarget prefers a pasted URL', () => {
   assert.equal(gh.slug, 'acme/app');
 
   const gl = parseTarget(
-    'https://nova.teachx.ai/trace-analysis/ipt/-/merge_requests/54',
+    'https://gitlab.example.com/trace-analysis/ipt/-/merge_requests/54',
   );
   assert.equal(gl.provider, 'gitlab');
   assert.equal(gl.number, '54');

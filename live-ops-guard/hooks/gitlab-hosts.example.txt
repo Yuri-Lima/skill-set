@@ -1,0 +1,5 @@
+# live-ops-guard GitLab hosts — one hostname per line.
+# gitlab.com and any host containing "gitlab." are recognised without this file.
+# Copy to ~/.grok/hooks/live-ops-guard/gitlab-hosts.txt and add only self-hosted
+# GitLab hostnames the operator pasted verbatim. Do not commit the filled file.
+# Lines starting with # are ignored.

@@ -81,7 +81,7 @@ Use the GitLab MCP (`search_tool` if schemas are not loaded):
    `reviewer_ids` (`gitlab__whoami`)
 
 `project_id` is the URL path (`group/project`). Self-hosted GitLab
-(e.g. nova.teachx.ai) uses the same tools when that host is configured.
+(e.g. gitlab.example.com) uses the same tools when that host is configured.
 
 ### Gitea / Forgejo / Codeberg
 

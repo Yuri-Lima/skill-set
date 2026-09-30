@@ -1,3 +1,5 @@
 hooks/live-hosts.txt
+hooks/gitlab-hosts.txt
+hooks/ledger.jsonl
+hooks/NEEDS_TRACE_REVIEW
 hooks/__pycache__/
-

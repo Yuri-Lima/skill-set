@@ -212,6 +212,9 @@ for name in "${NAMES[@]}"; do
       if [[ "$dest" == "$HOME/.cursor/skills" ]]; then
         bash "$target/scripts/install-cursor-runtime.sh"
       fi
+      if [[ "$dest" == "$HOME/.claude/skills" ]]; then
+        bash "$target/scripts/install-claude-runtime.sh"
+      fi
     fi
   done
 done
