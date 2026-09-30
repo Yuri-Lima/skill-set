@@ -9,24 +9,24 @@ die() { echo "FAIL: $*" >&2; exit 1; }
 
 out="$("$WRITE" --print \
   --name box-1 \
-  --user yuri \
-  --home /home/yuri \
-  --workdir /home/yuri/app \
-  --bin /home/yuri/.local/bin/claude)"
+  --user lazyuser \
+  --home /home/lazyuser \
+  --workdir /home/lazyuser/app \
+  --bin /home/lazyuser/.local/bin/claude)"
 
 printf '%s\n' "$out" | grep -q '^Description=Claude Code Remote Control (box-1)$' \
   || die "description"
-printf '%s\n' "$out" | grep -q '^User=yuri$' || die "user"
-printf '%s\n' "$out" | grep -q '^WorkingDirectory=/home/yuri/app$' || die "workdir"
-printf '%s\n' "$out" | grep -q '^Environment=HOME=/home/yuri$' || die "home"
-printf '%s\n' "$out" | grep -q '^ExecStart=/home/yuri/.local/bin/claude remote-control --name "box-1" --spawn same-dir$' \
+printf '%s\n' "$out" | grep -q '^User=lazyuser$' || die "user"
+printf '%s\n' "$out" | grep -q '^WorkingDirectory=/home/lazyuser/app$' || die "workdir"
+printf '%s\n' "$out" | grep -q '^Environment=HOME=/home/lazyuser$' || die "home"
+printf '%s\n' "$out" | grep -q '^ExecStart=/home/lazyuser/.local/bin/claude remote-control --name "box-1" --spawn same-dir$' \
   || die "execstart: $out"
 printf '%s\n' "$out" | grep -q '^Restart=always$' || die "restart"
 
 spaced="$("$WRITE" --print \
   --name 'lab box' \
-  --user yuri \
-  --home /home/yuri \
+  --user lazyuser \
+  --home /home/lazyuser \
   --workdir /srv/proj \
   --bin /usr/bin/claude)"
 printf '%s\n' "$spaced" | grep -q 'Description=Claude Code Remote Control (lab box)' \

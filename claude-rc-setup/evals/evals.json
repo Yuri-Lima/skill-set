@@ -32,7 +32,7 @@
     {
       "id": 4,
       "name": "stray-rc-warn-then-stop-after",
-      "prompt": "/claude-rc-setup in /home/yuri/app. NAME=box-1. I already accepted trust and RC consent in that dir.",
+      "prompt": "/claude-rc-setup in /home/lazyuser/app. NAME=box-1. I already accepted trust and RC consent in that dir.",
       "expected_output": "Warn that stray_pids=4412 is a manual remote-control. After verdict=ok, stop pid 4412. Do not leave two servers on the same WORKDIR.",
       "files": ["fixtures/probe-stray-rc.txt", "fixtures/verify-ok.txt"]
     },
@@ -46,7 +46,7 @@
     {
       "id": 6,
       "name": "happy-path-create-enable-verify",
-      "prompt": "/claude-rc-setup. WORKDIR=/home/yuri/app NAME=box-1. Trust and RC consent already done in that dir.",
+      "prompt": "/claude-rc-setup. WORKDIR=/home/lazyuser/app NAME=box-1. Trust and RC consent already done in that dir.",
       "expected_output": "precondition=ok. Render via write-unit.sh --print, then --install. systemctl enable --now. verify.sh verdict=ok. Report NAME=box-1. Do not reboot.",
       "files": ["fixtures/probe-ok.txt", "fixtures/verify-ok.txt"]
     },
