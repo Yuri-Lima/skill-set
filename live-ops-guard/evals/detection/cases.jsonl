@@ -1,0 +1,110 @@
+{"id": "tp-ghp", "tier": "must", "kind": "secret", "text": "export GITHUB_TOKEN={{lit:gh}}{{lit:p_}}{{A*36}}", "expect": ["github-pat"], "note": "classic PAT; also an env assignment"}
+{"id": "tp-gho", "tier": "must", "kind": "secret", "text": "token: {{lit:gh}}{{lit:o_}}{{b*30}}", "expect": ["github-pat"], "note": ""}
+{"id": "tp-github-fine", "tier": "must", "kind": "secret", "text": "{{lit:githu}}{{lit:b_pat_}}{{x*22}}_{{y*40}}", "expect": ["github-fine-grained"], "note": ""}
+{"id": "tp-glpat", "tier": "must", "kind": "secret", "text": "curl -H 'PRIVATE-TOKEN: {{lit:glp}}{{lit:at-}}{{Zz9*8}}' https://gitlab.example.com/api/v4/user", "expect": ["gitlab-pat"], "note": ""}
+{"id": "tp-glrt", "tier": "must", "kind": "secret", "text": "gitlab-runner register --token {{lit:gl}}{{lit:rt-}}{{r*24}}", "expect": ["gitlab-runner-token"], "note": ""}
+{"id": "tp-gldt", "tier": "must", "kind": "secret", "text": "docker login -u deploy -p {{lit:gl}}{{lit:dt-}}{{d*24}} registry.gitlab.example.com", "expect": ["gitlab-deploy-token"], "note": ""}
+{"id": "tp-glptt", "tier": "must", "kind": "secret", "text": "curl -X POST -F token={{lit:glp}}{{lit:tt-}}{{t*24}} https://gitlab.example.com/api/v4/projects/1/trigger/pipeline", "expect": ["gitlab-trigger-token"], "note": ""}
+{"id": "tp-akia", "tier": "must", "kind": "secret", "text": "aws_access_key_id = {{lit:AK}}{{lit:IA}}{{lit:IOSFODNN}}{{lit:7EXAMPLE}}", "expect": ["aws-access-key"], "note": ""}
+{"id": "tp-aws-secret", "tier": "must", "kind": "secret", "text": "aws_secret_access_key = {{lit:wJalrXUtnFEMI/K7MDEN}}{{lit:G/bPxRfiCYEXAMPLEKEY}}", "expect": ["assignment-secret"], "note": "AWS example secret from AWS docs"}
+{"id": "tp-slack", "tier": "must", "kind": "secret", "text": "SLACK_BOT_TOKEN={{lit:xo}}{{lit:xb-}}{{lit:1234567890-1}}{{lit:234567890123-}}{{a1a1*6}}", "expect": ["slack-token"], "note": ""}
+{"id": "tp-openai-legacy", "tier": "must", "kind": "secret", "text": "OPENAI_API_KEY=sk-{{Ab1*16}}", "expect": ["openai-key"], "note": ""}
+{"id": "tp-openai-proj", "tier": "must", "kind": "secret", "text": "OPENAI_API_KEY={{lit:sk-p}}{{lit:roj-}}{{Ab1*20}}", "expect": ["openai-project-key"], "note": "hyphen after sk- — missed by the legacy pattern"}
+{"id": "tp-anthropic", "tier": "must", "kind": "secret", "text": "ANTHROPIC_API_KEY={{lit:sk-ant}}{{lit:-api03-}}{{Ab1*20}}-x", "expect": ["anthropic-key"], "note": ""}
+{"id": "tp-xai", "tier": "must", "kind": "secret", "text": "XAI_API_KEY={{lit:xa}}{{lit:i-}}{{Q9w*12}}", "expect": ["xai-key"], "note": ""}
+{"id": "tp-npm", "tier": "must", "kind": "secret", "text": "//registry.npmjs.org/:_authToken={{lit:np}}{{lit:m_}}{{N7m*12}}", "expect": ["npm-token"], "note": ""}
+{"id": "tp-hf", "tier": "must", "kind": "secret", "text": "HF_TOKEN={{lit:h}}{{lit:f_}}{{H4f*10}}", "expect": ["hf-token"], "note": ""}
+{"id": "tp-jwt", "tier": "must", "kind": "secret", "text": "SUPABASE_SERVICE_ROLE_KEY={{lit:eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoic2VydmljZV9y}}{{lit:b2xlIiwiaWF0IjoxfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c}}", "expect": ["jwt"], "note": ""}
+{"id": "tp-bearer", "tier": "must", "kind": "secret", "text": "curl -H 'Authorization: Bearer {{Xy7*12}}' https://api.example.com/v1/me", "expect": ["bearer-token"], "note": ""}
+{"id": "tp-basic", "tier": "must", "kind": "secret", "text": "Authorization: Basic {{lit:dXNlcm5hbWU6UzNj}}{{lit:cjN0UDRzc3cwcmQh}}", "expect": ["basic-auth"], "note": ""}
+{"id": "tp-private-key", "tier": "must", "kind": "secret", "text": "{{lit:-----BEGIN OPENSS}}{{lit:H PRIVATE KEY-----}}\nb3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQ{{A*9}}BAAAAMwAAAAtzc2gtZW\n-----END OPENSSH PRIVATE KEY-----", "expect": ["private-key"], "note": ""}
+{"id": "tp-rsa-key", "tier": "must", "kind": "secret", "text": "{{lit:-----BEGIN RSA }}{{lit:PRIVATE KEY-----}}\nMIIEow", "expect": ["private-key"], "note": ""}
+{"id": "tp-db-url", "tier": "must", "kind": "secret", "text": "DATABASE_URL={{lit:postgre}}{{lit:s://app:}}S3cretPassw0rd@db.internal:5432/app", "expect": ["db-url-password"], "note": ""}
+{"id": "tp-redis-url", "tier": "must", "kind": "secret", "text": "REDIS_URL={{lit:redis://}}{{lit:default:}}R3d1sPassw0rdXyz@cache:6379", "expect": ["db-url-password"], "note": ""}
+{"id": "tp-env-password", "tier": "must", "kind": "secret", "text": "DB_PASSWORD=Sup3rS3cretValue2024xyz", "expect": ["assignment-secret"], "note": "trial C finding: underscore before password"}
+{"id": "tp-env-postgres", "tier": "must", "kind": "secret", "text": "POSTGRES_PASSWORD: p0stgr3sS3cretValue", "expect": ["assignment-secret"], "note": ""}
+{"id": "tp-env-secret-key", "tier": "must", "kind": "secret", "text": "SECRET_KEY = 'dj4ngo-s3cret-k3y-value-2026'", "expect": ["assignment-secret"], "note": ""}
+{"id": "tp-json-password", "tier": "must", "kind": "secret", "text": "{\"user\": \"app\", \"password\": \"S3cretV4lueForJson2026\"}", "expect": ["assignment-secret"], "note": ""}
+{"id": "tp-yaml-api-key", "tier": "must", "kind": "secret", "text": "api_key: k3yValueForYaml2026abc", "expect": ["assignment-secret"], "note": ""}
+{"id": "tp-stripe-live", "tier": "must", "kind": "secret", "text": "STRIPE_SECRET_KEY={{lit:sk_l}}{{lit:ive_}}{{S7r*8}}", "expect": ["stripe-key"], "note": ""}
+{"id": "tp-stripe-restricted", "tier": "must", "kind": "secret", "text": "{{lit:rk_t}}{{lit:est_}}{{R7k*8}}", "expect": ["stripe-key"], "note": ""}
+{"id": "tp-google", "tier": "must", "kind": "secret", "text": "GOOGLE_API_KEY={{lit:AI}}{{lit:za}}{{G0o*11}}gL", "expect": ["google-api-key"], "note": ""}
+{"id": "tp-telegram", "tier": "must", "kind": "secret", "text": "TELEGRAM_BOT_TOKEN=123456789:{{T3l*11}}gr", "expect": ["telegram-bot-token"], "note": ""}
+{"id": "tp-sendgrid", "tier": "must", "kind": "secret", "text": "SENDGRID_API_KEY={{lit:S}}{{lit:G.}}{{s3n*8}}.{{dGr1d*8}}", "expect": ["sendgrid-key"], "note": ""}
+{"id": "tp-token-header", "tier": "must", "kind": "secret", "text": "Authorization: token {{lit:gh}}{{lit:p_}}{{C*36}}", "expect": ["github-pat"], "note": ""}
+{"id": "tp-url-token", "tier": "must", "kind": "secret", "text": "https://api.example.com/hook?token=t0kenValueInQuery2026abc", "expect": ["assignment-secret"], "note": "a session token in a URL is a secret"}
+{"id": "tp-mixed-log", "tier": "must", "kind": "secret", "text": "2026-09-30 12:00:01 INFO connecting\n2026-09-30 12:00:02 DEBUG headers={'Authorization': 'Bearer {{L0g*12}}'}\n2026-09-30 12:00:03 INFO ok", "expect": ["bearer-token"], "note": ""}
+{"id": "fp-process-env", "tier": "must", "kind": "secret", "text": "password: process.env.DB_PASSWORD", "expect": [], "note": "identifier, not a value"}
+{"id": "fp-os-environ", "tier": "must", "kind": "secret", "text": "DB_PASSWORD = os.environ[\"DB_PASSWORD\"]", "expect": [], "note": ""}
+{"id": "fp-settings", "tier": "must", "kind": "secret", "text": "access_token: settings.ACCESS_TOKEN_NAME", "expect": [], "note": ""}
+{"id": "fp-config-get", "tier": "must", "kind": "secret", "text": "password = config.get(\"db\", \"password\")", "expect": [], "note": ""}
+{"id": "fp-placeholder-var", "tier": "must", "kind": "secret", "text": "password: ${DB_PASSWORD}", "expect": [], "note": ""}
+{"id": "fp-placeholder-dollar", "tier": "must", "kind": "secret", "text": "curl -H \"Authorization: Bearer $GITHUB_TOKEN\"", "expect": [], "note": ""}
+{"id": "fp-placeholder-angle", "tier": "must", "kind": "secret", "text": "PRIVATE-TOKEN: <your-token-here>", "expect": [], "note": ""}
+{"id": "fp-placeholder-word", "tier": "must", "kind": "secret", "text": "api_key: YOUR_API_KEY_HERE_1234", "expect": [], "note": "uppercase-only placeholder"}
+{"id": "fp-changeme", "tier": "must", "kind": "secret", "text": "password: changeme", "expect": [], "note": ""}
+{"id": "fp-redacted-marker", "tier": "must", "kind": "secret", "text": "deploy token: ***REDACTED:github-pat***", "expect": [], "note": "our own marker must not re-match"}
+{"id": "fp-commit-sha", "tier": "must", "kind": "secret", "text": "commit 3f2a9c1e8b7d6f5a4c3b2a1e0d9c8b7a6f5e4d3c\nAuthor: someone", "expect": [], "note": ""}
+{"id": "fp-uuid", "tier": "must", "kind": "secret", "text": "id=550e8400-e29b-41d4-a716-446655440000", "expect": [], "note": ""}
+{"id": "fp-integrity", "tier": "must", "kind": "secret", "text": "\"integrity\": \"sha512-{{A*86}}==\"", "expect": [], "note": "lockfile hash"}
+{"id": "fp-docker-digest", "tier": "must", "kind": "secret", "text": "image: nginx@sha256:{{a1a1*16}}", "expect": [], "note": ""}
+{"id": "fp-cache-key", "tier": "must", "kind": "secret", "text": "cache_key=3f2a9c1e8b7d6f5a4c3b2a1e0d9c8b7a6f5e4d3c", "expect": [], "note": "a key name that is not a secret"}
+{"id": "fp-public-key-name", "tier": "must", "kind": "secret", "text": "public_key=ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG7x9Yz", "expect": [], "note": ""}
+{"id": "fp-ssh-pub", "tier": "must", "kind": "secret", "text": "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC7x9Yz user@host", "expect": [], "note": ""}
+{"id": "fp-partition-key", "tier": "must", "kind": "secret", "text": "partition_key=user2026abc123xyz9", "expect": [], "note": ""}
+{"id": "fp-stripe-publishable", "tier": "must", "kind": "secret", "text": "STRIPE_PUBLISHABLE_KEY=pk_live_{{P7k*8}}", "expect": [], "note": "publishable key is public"}
+{"id": "fp-token-type", "tier": "must", "kind": "secret", "text": "token_type: Bearer\nexpires_in: 3600", "expect": [], "note": ""}
+{"id": "fp-bearer-newline", "tier": "must", "kind": "secret", "text": "Authorization: Bearer\n<paste token>", "expect": [], "note": ""}
+{"id": "fp-bcrypt", "tier": "must", "kind": "secret", "text": "password_hash = '$2b$12$KIXQ8v0m1n2o3p4q5r6s7u'", "expect": [], "note": "hash, not a password"}
+{"id": "fp-secret-true", "tier": "must", "kind": "secret", "text": "secret: true\nsecret_name: my-app-secret", "expect": [], "note": ""}
+{"id": "fp-url-page", "tier": "must", "kind": "secret", "text": "https://example.com/docs?page=2&sort=name", "expect": [], "note": ""}
+{"id": "fp-model-names", "tier": "must", "kind": "secret", "text": "model: {{lit:xa}}{{lit:i-}}grok-4\nfallback: sk-latest", "expect": [], "note": ""}
+{"id": "fp-terraform-var", "tier": "must", "kind": "secret", "text": "access_key = var.aws_access_key", "expect": [], "note": ""}
+{"id": "fp-env-example", "tier": "must", "kind": "secret", "text": "DB_PASSWORD=\nAPI_KEY=\n# fill these in", "expect": [], "note": "empty values"}
+{"id": "fp-prose", "tier": "must", "kind": "secret", "text": "The password must contain at least 16 characters, one digit and one lowercase letter.", "expect": [], "note": ""}
+{"id": "fp-key-id", "tier": "must", "kind": "secret", "text": "aws_access_key_id = {{lit:AK}}{{lit:IA}}_NOT_REAL", "expect": [], "note": "not 16 uppercase/digits"}
+{"id": "fp-base64-blob", "tier": "must", "kind": "secret", "text": "data: {{QUJD*30}}", "expect": [], "note": "bare base64 without a key or scheme"}
+{"id": "st-secret-in-comment", "tier": "stretch", "kind": "secret", "text": "# old key, do not use: {{lit:gh}}{{lit:p_}}{{O*36}}", "expect": ["github-pat"], "note": "should still detect; comments leak too"}
+{"id": "st-split-token", "tier": "stretch", "kind": "secret", "text": "token part 1: {{lit:gh}}{{lit:p_}}{{A*15}}\ntoken part 2: {{A*21}}", "expect": [], "note": "split across lines: no detection expected, documented"}
+{"id": "st-hex-api-key", "tier": "stretch", "kind": "secret", "text": "api_key=9f8e7d6c5b4a39281706f5e4d3c2b1a0", "expect": ["assignment-secret"], "note": "hex-only value has no lowercase beyond a-f; currently caught by a-f"}
+{"id": "st-pem-cert", "tier": "stretch", "kind": "secret", "text": "-----BEGIN CERTIFICATE-----\nMIIB", "expect": [], "note": "a certificate is public"}
+{"id": "read-00", "tier": "must", "kind": "read", "text": "cat .env", "expect": ["env-file"], "note": ""}
+{"id": "read-01", "tier": "must", "kind": "read", "text": "cat .env.local", "expect": ["env-file"], "note": ""}
+{"id": "read-02", "tier": "must", "kind": "read", "text": "cat .env.example", "expect": [], "note": "example file"}
+{"id": "read-03", "tier": "must", "kind": "read", "text": "cat .env.template", "expect": [], "note": ""}
+{"id": "read-04", "tier": "must", "kind": "read", "text": "cat ~/.ssh/id_ed25519", "expect": ["ssh-private-key"], "note": ""}
+{"id": "read-05", "tier": "must", "kind": "read", "text": "cat ~/.ssh/id_ed25519.pub", "expect": [], "note": "public half"}
+{"id": "read-06", "tier": "must", "kind": "read", "text": "cat ~/.ssh/config", "expect": [], "note": ""}
+{"id": "read-07", "tier": "must", "kind": "read", "text": "ls ~/.ssh", "expect": [], "note": "listing, not reading"}
+{"id": "read-08", "tier": "must", "kind": "read", "text": "cat ~/.aws/credentials", "expect": ["aws-credentials"], "note": ""}
+{"id": "read-09", "tier": "must", "kind": "read", "text": "cat ~/.netrc", "expect": ["netrc"], "note": ""}
+{"id": "read-10", "tier": "must", "kind": "read", "text": "cat ~/.docker/config.json", "expect": ["docker-config"], "note": ""}
+{"id": "read-11", "tier": "must", "kind": "read", "text": "cat ~/.kube/config", "expect": ["kube-config"], "note": ""}
+{"id": "read-12", "tier": "must", "kind": "read", "text": "cat ~/.npmrc", "expect": ["npmrc"], "note": ""}
+{"id": "read-13", "tier": "must", "kind": "read", "text": "gh auth token", "expect": ["gh-auth-token"], "note": ""}
+{"id": "read-14", "tier": "must", "kind": "read", "text": "gh auth status", "expect": [], "note": "status only"}
+{"id": "read-15", "tier": "must", "kind": "read", "text": "glab auth status --show-token", "expect": ["glab-show-token"], "note": ""}
+{"id": "read-16", "tier": "must", "kind": "read", "text": "op read op://vault/item/password", "expect": ["1password-read"], "note": ""}
+{"id": "read-17", "tier": "must", "kind": "read", "text": "op item get login --fields password", "expect": ["1password-read"], "note": ""}
+{"id": "read-18", "tier": "must", "kind": "read", "text": "security find-generic-password -w -s foo", "expect": ["keychain-read"], "note": ""}
+{"id": "read-19", "tier": "must", "kind": "read", "text": "vault kv get secret/app", "expect": ["vault-read"], "note": ""}
+{"id": "read-20", "tier": "must", "kind": "read", "text": "kubectl get secret app -o yaml", "expect": ["k8s-secret"], "note": ""}
+{"id": "read-21", "tier": "must", "kind": "read", "text": "kubectl get pods", "expect": [], "note": ""}
+{"id": "read-22", "tier": "must", "kind": "read", "text": "aws secretsmanager get-secret-value --secret-id app", "expect": ["aws-secret-read"], "note": ""}
+{"id": "read-23", "tier": "must", "kind": "read", "text": "aws ssm get-parameter --name /app/db --with-decryption", "expect": ["aws-secret-read"], "note": ""}
+{"id": "read-24", "tier": "must", "kind": "read", "text": "aws ssm get-parameter --name /app/db", "expect": [], "note": "without decryption"}
+{"id": "read-25", "tier": "must", "kind": "read", "text": "echo $GITHUB_TOKEN", "expect": ["echo-secret-var"], "note": ""}
+{"id": "read-26", "tier": "must", "kind": "read", "text": "echo \"token is ${API_KEY}\"", "expect": ["echo-secret-var"], "note": ""}
+{"id": "read-27", "tier": "must", "kind": "read", "text": "echo $HOME", "expect": [], "note": ""}
+{"id": "read-28", "tier": "must", "kind": "read", "text": "printenv", "expect": ["env-dump"], "note": ""}
+{"id": "read-29", "tier": "must", "kind": "read", "text": "env", "expect": ["env-dump"], "note": ""}
+{"id": "read-30", "tier": "must", "kind": "read", "text": "env | grep TOKEN", "expect": ["env-dump"], "note": ""}
+{"id": "read-31", "tier": "must", "kind": "read", "text": "env FOO=1 node x.js", "expect": [], "note": "env as a prefix"}
+{"id": "read-32", "tier": "must", "kind": "read", "text": "cat > t.py <<'PY'\nx = 'gh auth token'\nPY", "expect": [], "note": "heredoc body is data"}
+{"id": "read-33", "tier": "stretch", "kind": "read", "text": "printf '%s' \"gh auth token\"", "expect": [], "note": "quoted string, not a command"}
+{"id": "read-34", "tier": "must", "kind": "read", "text": "grep -r TOKEN src/", "expect": [], "note": "search, not a read of a store"}
+{"id": "read-35", "tier": "must", "kind": "read", "text": "cat /etc/shadow", "expect": ["etc-shadow"], "note": ""}
+{"id": "read-36", "tier": "must", "kind": "read", "text": "base64 ~/.netrc", "expect": ["netrc"], "note": ""}
+{"id": "read-37", "tier": "must", "kind": "read", "text": "cp .env /tmp/", "expect": ["env-file"], "note": "copy exposes too"}
+{"id": "read-38", "tier": "must", "kind": "read", "text": "source .env && npm start", "expect": ["env-file"], "note": ""}
+{"id": "read-39", "tier": "stretch", "kind": "read", "text": "cat config/credentials.json", "expect": [], "note": "stretch: not covered by name"}

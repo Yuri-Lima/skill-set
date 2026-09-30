@@ -148,6 +148,10 @@ asks, including `uptime` on an unlisted host; so does reading a secret store.
 By default (`notify` mode) live calls run and only a real exposure interrupts, with
 options rather than a question; `LIVE_OPS_GUARD_MODE=gate` restores the hold-first behaviour.
 
+Detection quality is scored against a labelled corpus (`live-ops-guard/evals/detection`,
+`scripts/eval-detection.py`: precision/recall per kind, `must` cases gate the suite).
+Redaction is containment, not undo: `LIVE_OPS_GUARD_REDACT=off` disables it and the notice says so.
+
 The guard keeps a trail: `ledger.jsonl` (one line per ask / redaction /
 fail-open, never the payload) and `NEEDS_TRACE_REVIEW` (sessions that
 exposed secret-like data). Session start nags about pending reviews, session

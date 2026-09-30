@@ -502,6 +502,17 @@ def main() -> int:
     check("Sup3rS3cret" not in json.dumps(tr) and "k3yValue" not in json.dumps(tr), "store-read notice and replacement carry no value")
     os.environ["LIVE_OPS_GUARD_MODE"] = "gate"
 
+    # --- redaction switch ---
+    os.environ["LIVE_OPS_GUARD_MODE"] = "notify"
+    os.environ["LIVE_OPS_GUARD_REDACT"] = "off"
+    ro = mod.post_decision({"session_id": "s-noredact", "transcript_path": "/tmp/n.jsonl", "hook_event_name": "PostToolUse", "tool_name": "Bash", "tool_use_id": "nr1", "tool_input": {"command": "bash x.sh"}, "tool_response": f"t {FAKE_PAT}"})
+    check("updatedToolOutput" not in ro.get("hookSpecificOutput", {}), "redact off: no replacement sent")
+    check("Redaction is off" in ro.get("systemMessage", "") and "Stop and rotate" in ro.get("systemMessage", ""), "redact off: notice says so and recommends rotation", ro.get("systemMessage", "")[:300])
+    check("ghp_AAAA" not in json.dumps(ro), "redact off: the notice itself is still redacted")
+    check(any(r["decision"] == "redacted" for r in mod.ledger_for_session("s-noredact")) or any(r["decision"] == "exposure" for r in mod.ledger_for_session("s-noredact")), "redact off: ledger and marker still written")
+    os.environ.pop("LIVE_OPS_GUARD_REDACT", None)
+    os.environ["LIVE_OPS_GUARD_MODE"] = "gate"
+
     # --- item 2 (user request): no hard-coded host or person in the guard ---
     src = (ROOT / "guard.py").read_text(encoding="utf-8")
     banned = ("nova." + "teachx", "yu" + "ri")  # spelled apart so this file is not itself a hit
