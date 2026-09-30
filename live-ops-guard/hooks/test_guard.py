@@ -414,6 +414,18 @@ def main() -> int:
     gbody = Path(gpath).read_text(encoding="utf-8")
     check("1 flagged tool call" in gsummary and "read_file" in gbody and "glpat-BBBB" not in gbody and "***REDACTED:gitlab-pat***" in gbody, "grok export parses session/update rows", gsummary + gbody[:300])
     check(any(r.get("runtime") == "grok" for r in mod.ledger_for_session("s-gexp")), "grok session ledger row labelled grok")
+    # a Grok Bash envelope with the output as bytes must not leak the value as numbers
+    gt2 = Path(HOME, "fake-grok2", "updates.jsonl"); gt2.parent.mkdir(parents=True, exist_ok=True)
+    env_out = {"type": "Bash", "command": "bash x.sh", "exit_code": 0, "output": list(f"token {FAKE_PAT}\n".encode()), "output_for_prompt": f"exit: 0\ntoken {FAKE_PAT}\n"}
+    gt2.write_text("\n".join([
+        json.dumps({"timestamp": "g1", "method": "session/update", "params": {"update": {"sessionUpdate": "tool_call", "toolCallId": "tc9", "title": "run_terminal_command", "rawInput": {"command": "bash x.sh"}}}}),
+        json.dumps({"timestamp": "g2", "method": "session/update", "params": {"update": {"sessionUpdate": "tool_call_update", "toolCallId": "tc9", "status": "completed", "rawOutput": env_out}}}),
+    ]) + "\n", encoding="utf-8")
+    mod.post_decision({"session_id": "s-gbytes", "transcript_path": str(gt2), "hook_event_name": "PostToolUse", "tool_name": "run_terminal_command", "tool_input": {"command": "bash x.sh"}, "tool_response": env_out})
+    bpath, _ = mod.export_evidence("s-gbytes", str(Path(HOME, "out")))
+    bbody = Path(bpath).read_text(encoding="utf-8")
+    token_bytes = ", ".join(str(b) for b in FAKE_PAT[:8].encode())
+    check("ghp_AAAA" not in bbody and token_bytes not in bbody and "***REDACTED:github-pat***" in bbody, "grok export renders the output text, never the byte array", bbody[-600:])
     buf = io.StringIO()
     with redirect_stdout(buf):
         mod.review_cli(["s-cexp", "--export", "--out", str(Path(HOME, "out2"))])
@@ -475,6 +487,19 @@ def main() -> int:
     check("followup_message" in cst and "Relay this" in cst["followup_message"] and set(cst) == {"followup_message"}, "cursor stop: followup_message only", str(cst)[:200])
     cstart = mod.start_decision({"hook_event_name": "sessionStart", "cursor_version": "1.0.0", "session_id": "cu-2"})
     check(set(cstart) == {"additional_context"}, "cursor start: additional_context only", str(cstart)[:100])
+    os.environ["LIVE_OPS_GUARD_MODE"] = "gate"
+
+    # --- trial C finding: env-style names and store-read precedence ---
+    os.environ["LIVE_OPS_GUARD_MODE"] = "notify"
+    env_text = "DB_HOST=localhost\nDB_PASSWORD=Sup3rS3cretValue2024xyz\nGITHUB_TOKEN=ghq1abcdefgh2345ijkl\nAWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI2K7MDENG3bPxRfiCY\nAPI_KEY=k3yValueForTrial2026abc\n"
+    red = mod.redact_text(env_text)
+    check("Sup3rS3cret" not in red and "ghq1abcd" not in red and "wJalrXUt" not in red and "k3yValue" not in red, "env-style names (X_PASSWORD, X_TOKEN, X_SECRET_ACCESS_KEY) are redacted", red)
+    check("DB_HOST=localhost" in red, "non-secret env line untouched")
+    check(mod.find_secrets("password: process.env.DB_PASSWORD\nDB_PASSWORD = os.environ['DB_PASSWORD']") == [], "identifiers still not values after the prefix change")
+    tr = mod.post_decision({"session_id": "s-envread", "transcript_path": "/tmp/e.jsonl", "hook_event_name": "PostToolUse", "tool_name": "Bash", "tool_use_id": "er1", "tool_input": {"command": "cat .env"}, "tool_response": env_text})
+    msg = tr.get("systemMessage", "")
+    check("a secret store was READ" in msg and "Stop and rotate everything" in msg, "store read outranks a pattern hit in the notice", msg[:400])
+    check("Sup3rS3cret" not in json.dumps(tr) and "k3yValue" not in json.dumps(tr), "store-read notice and replacement carry no value")
     os.environ["LIVE_OPS_GUARD_MODE"] = "gate"
 
     # --- item 2 (user request): no hard-coded host or person in the guard ---

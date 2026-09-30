@@ -102,7 +102,9 @@ SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     (
         "assignment-secret",
         re.compile(
-            r"(?i)\b(api[_-]?key|access[_-]?token|auth[_-]?token|secret|password|passwd|private[_-]?key)"
+            # key: DB_PASSWORD, POSTGRES_PASSWORD, GITHUB_TOKEN, AWS_SECRET_ACCESS_KEY, api_key …
+            # (a \w* prefix, because '_' is a word char and \bpassword misses DB_PASSWORD)
+            r"(?i)\b\w*(api[_-]?key|access[_-]?token|auth[_-]?token|secret|password|passwd|private[_-]?key|_token|_key|token)"
             # value: 16+ token chars with at least one digit and one lowercase letter, no dots —
             # so `password: process.env.DB_PASSWORD` or `SECRET = SOME_CONSTANT` is code, not a value
             r"\s*[:=]\s*['\"]?(?!\$\{)(?=[A-Za-z0-9_\-+/=]*\d)(?=[A-Za-z0-9_\-+/=]*[a-z])"
@@ -1296,7 +1298,10 @@ def recommended_for(where: str, kinds: list[str], runtime: str, redaction_applie
             "reaches the model and the transcript unredacted."
         )
     if where == "secret-store-read":
-        return "Stop and rotate what that store held, then proceed. Values from a secret store are not pattern-redacted."
+        return (
+            "Stop and rotate everything that store held, then proceed. Only lines matching a token "
+            "shape were redacted; the rest of the file reached the model and the transcript as-is."
+        )
     if where == "secret-in-tool-input":
         return "Stop: rotate the value now (it cannot be unwritten from the transcript), then re-run with a ${VAR} reference."
     if where == "guard-fail-open":
@@ -1621,14 +1626,20 @@ def post_decision(event: dict[str, Any]) -> dict[str, Any]:
         marker_add(normalized, "secret-store-read", kinds)
 
     shown_kinds = secrets + [k.split(":", 1)[1] + " (read)" for k in read_kinds]
-    where = "secret-in-tool-result" if secrets else "secret-store-read"
+    # A store read outranks a pattern hit: lines that matched no pattern (DB_HOST=…, or a
+    # password with no digit) are still in the transcript, unredacted.
+    where = "secret-store-read" if read_kinds else "secret-in-tool-result"
     is_mcp = bool(event.get("mcp_server_name") or "__" in name or name.startswith("mcp__"))
     # Cursor honours a replacement for MCP output only; a shell result cannot be redacted there.
     redaction_applied = bool(secrets) and not (runtime == "cursor" and not is_mcp)
     evidence: list[str]
-    if secrets:
+    if secrets and not read_kinds:
         count, snippets = evidence_lines(text)
         evidence = [f"{count} match(es) in a result of {len(text)} chars", *snippets]
+    elif secrets:
+        count, snippets = evidence_lines(text)
+        evidence = [f"secret store read; {count} line(s) matched a token shape and were redacted, "
+                    f"the other {max(0, text.count(chr(10)) + 1 - count)} line(s) were not", *snippets]
     else:
         cmd = ""
         ti = normalized.get("toolInput")
@@ -1804,10 +1815,14 @@ def _claude_tool_calls(path: str) -> list[dict[str, Any]]:
                 body = item.get("content")
                 if isinstance(body, list):
                     body = "\n".join(str(b.get("text") or "") for b in body if isinstance(b, dict))
-                text = flatten_text(body)
+                text = result_text(body)
                 raw = row.get("toolUseResult")
                 if isinstance(raw, str) and len(raw) > len(text):
                     text = raw
+                elif isinstance(raw, dict):
+                    alt = result_text(raw)
+                    if len(alt) > len(text):
+                        text = alt
                 calls.setdefault(tid, {"id": tid, "tool": "", "input": None, "ts": str(row.get("timestamp") or ""), "result": ""})
                 calls[tid]["result"] = text
                 if tid not in order:
@@ -1838,7 +1853,9 @@ def _grok_tool_calls(path: str) -> list[dict[str, Any]]:
         if upd.get("rawInput") is not None and call["input"] is None:
             call["input"] = upd.get("rawInput")
         if upd.get("rawOutput") is not None:
-            call["result"] = flatten_text(upd.get("rawOutput"))
+            # result_text, never flatten_text: Grok's envelope carries the output as a byte
+            # array too, and a JSON dump would print the secret as numbers.
+            call["result"] = result_text(upd.get("rawOutput"))
         elif isinstance(upd.get("content"), list) and not call["result"]:
             texts = []
             for c in upd["content"]:
