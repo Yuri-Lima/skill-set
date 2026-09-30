@@ -36,7 +36,7 @@ Modes (--mode, or $LIVE_OPS_GUARD_MODE; default "notify"):
 
 CLI:
   guard.py --event pre|post|start|stop [--runtime grok|cursor|claude] [--mode notify|gate]
-  guard.py review [SESSION|--last] [--ack]
+  guard.py review [SESSION|--last] [--ack] [--export [--out DIR]]
 """
 
 from __future__ import annotations
@@ -102,7 +102,10 @@ SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
         "assignment-secret",
         re.compile(
             r"(?i)\b(api[_-]?key|access[_-]?token|auth[_-]?token|secret|password|passwd|private[_-]?key)"
-            r"\s*[:=]\s*['\"]?(?!\$\{)([^\s'\"\\]{16,})"
+            # value: 16+ token chars with at least one digit and one lowercase letter, no dots —
+            # so `password: process.env.DB_PASSWORD` or `SECRET = SOME_CONSTANT` is code, not a value
+            r"\s*[:=]\s*['\"]?(?!\$\{)(?=[A-Za-z0-9_\-+/=]*\d)(?=[A-Za-z0-9_\-+/=]*[a-z])"
+            r"([A-Za-z0-9_\-+/=]{16,})(?![A-Za-z0-9_\-+/=.])"
         ),
     ),
     (
@@ -607,7 +610,10 @@ def runtime_of(event: dict[str, Any] | None) -> str:
         return "grok"
     if is_cursor_payload(event):
         return "cursor"
-    if event.get("transcript_path") is not None:
+    transcript = str(event.get("transcript_path") or "")
+    if "/.grok/" in transcript or transcript.endswith("updates.jsonl"):
+        return "grok"
+    if transcript:
         return "claude"
     return "grok"
 
@@ -1232,6 +1238,35 @@ def recommended_for(where: str, kinds: list[str], runtime: str, redaction_applie
     return "Stop and review the trace before doing anything else on a live host."
 
 
+def evidence_lines(text: str, max_matches: int = 3, width: int = 140) -> tuple[int, list[str]]:
+    """(match count, redacted one-line snippets of where the secret patterns hit).
+
+    Enough for the operator to judge "real or false positive" without opening the trace."""
+    hits: list[tuple[int, str]] = []
+    for kind, pattern in SECRET_PATTERNS:
+        for match in pattern.finditer(text):
+            if ignore_span(text, match.start(), match.end()):
+                continue
+            hits.append((match.start(), kind))
+    hits.sort()
+    snippets: list[str] = []
+    seen_lines: set[int] = set()
+    for pos, kind in hits:
+        line_no = text.count("\n", 0, pos)
+        if line_no in seen_lines:
+            continue
+        seen_lines.add(line_no)
+        if len(snippets) >= max_matches:
+            break
+        line = text.split("\n")[line_no].strip()
+        snippet = redact_text(line)
+        if len(snippet) > width:
+            cut = max(0, snippet.find("***REDACTED") - 60)
+            snippet = ("…" if cut else "") + snippet[cut : cut + width] + "…"
+        snippets.append(f"line {line_no + 1} [{kind}]: {snippet}")
+    return len(hits), snippets
+
+
 def exposure_notice(
     where: str,
     kinds: list[str],
@@ -1239,8 +1274,9 @@ def exposure_notice(
     runtime: str,
     tool: str = "",
     redaction_applied: bool = False,
+    evidence: list[str] | None = None,
 ) -> str:
-    """The interruption the operator sees: what was exposed, and three ways forward.
+    """The interruption the operator sees: what was exposed, the evidence, and four ways forward.
 
     Not a yes/no question. The agent is told to present these options and wait."""
     what = EXPOSURE_WHERE.get(where, where)
@@ -1248,11 +1284,17 @@ def exposure_notice(
     lines = [
         f"EXPOSURE — {OPERATOR}, {what}{shown_tool}: {', '.join(kinds) or 'unknown kind'}.",
         f"Session {session} ({runtime}) is now marked NEEDS_TRACE_REVIEW; the guard will not clear it.",
+    ]
+    if evidence:
+        lines.append("Evidence (redacted):")
+        lines.extend(f"  {item}" for item in evidence)
+    lines += [
         "",
         "Options:",
         f"  1. Proceed — keep working; review the trace at the end: {review_command(session)}",
         "  2. Stop — end here; rotate the exposed credential now.",
         f"  3. Recommended — {recommended_for(where, kinds, runtime, redaction_applied)}",
+        f"  4. Evidence — export the exposed paragraphs of this session (redacted) to a file you can read: {review_command(session)} --export",
     ]
     return "\n".join(lines)
 
@@ -1260,7 +1302,7 @@ def exposure_notice(
 def exposure_agent_instruction(notice: str) -> str:
     return (
         "live-ops-guard EXPOSURE. Stop the current task. Show the operator this notice verbatim "
-        "and ask them to pick option 1, 2 or 3 (use your ask-the-user tool if you have one). "
+        "and ask them to pick option 1, 2, 3 or 4 (use your ask-the-user tool if you have one). "
         "Do not continue, retry, or quote the exposed value until they choose. Never run `--ack` for them.\n\n"
         + notice
     )
@@ -1353,12 +1395,14 @@ def pre_decision(event: dict[str, Any]) -> dict[str, Any]:
         session = session_id_of(normalized)
         ledger_write(normalized, stage="pre", decision="exposure", tool=tool, kinds=kinds)
         marker_add(normalized, "secret-in-tool-input", secret_kinds)
+        count, snippets = evidence_lines(flatten_text(normalized.get("toolInput")))
         notice = exposure_notice(
             "secret-in-tool-input",
             [k.split(":", 1)[1] for k in secret_kinds],
             session,
             runtime,
             tool=tool,
+            evidence=[f"{count} match(es) in the tool input", *snippets],
         )
         return _pre_notify_output(runtime, exposure_agent_instruction(notice), notice)
 
@@ -1412,7 +1456,18 @@ def post_decision(event: dict[str, Any]) -> dict[str, Any]:
 
     shown_kinds = secrets + [k.split(":", 1)[1] + " (read)" for k in read_kinds]
     where = "secret-in-tool-result" if secrets else "secret-store-read"
-    notice = exposure_notice(where, shown_kinds, session, runtime, tool=name, redaction_applied=bool(secrets))
+    evidence: list[str]
+    if secrets:
+        count, snippets = evidence_lines(text)
+        evidence = [f"{count} match(es) in a result of {len(text)} chars", *snippets]
+    else:
+        cmd = ""
+        ti = normalized.get("toolInput")
+        if isinstance(ti, dict):
+            cmd = str(ti.get("command") or "")
+        evidence = [f"command: {redact_text(cmd)[:160]}" if cmd else "command not visible in the event",
+                    f"result: {len(text)} chars (not pattern-redacted; values from a store rarely match a token shape)"]
+    notice = exposure_notice(where, shown_kinds, session, runtime, tool=name, redaction_applied=bool(secrets), evidence=evidence)
     instruction = exposure_agent_instruction(notice)
 
     if runtime == "cursor":
@@ -1529,12 +1584,205 @@ def _fail_open(event: dict[str, Any] | None, why: str) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Evidence export: the exposed paragraphs of a session, redacted, as a file
+# ---------------------------------------------------------------------------
+
+def _claude_tool_calls(path: str) -> list[dict[str, Any]]:
+    """Claude Code transcript (jsonl): pair tool_use with tool_result by id."""
+    calls: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
+    for row in _read_jsonl(path):
+        msg = row.get("message") or {}
+        content = msg.get("content")
+        if not isinstance(content, list):
+            continue
+        for item in content:
+            if not isinstance(item, dict):
+                continue
+            if item.get("type") == "tool_use":
+                tid = str(item.get("id") or "")
+                calls[tid] = {"id": tid, "tool": str(item.get("name") or ""), "input": item.get("input"),
+                              "ts": str(row.get("timestamp") or ""), "result": ""}
+                order.append(tid)
+            elif item.get("type") == "tool_result":
+                tid = str(item.get("tool_use_id") or "")
+                body = item.get("content")
+                if isinstance(body, list):
+                    body = "\n".join(str(b.get("text") or "") for b in body if isinstance(b, dict))
+                text = flatten_text(body)
+                raw = row.get("toolUseResult")
+                if isinstance(raw, str) and len(raw) > len(text):
+                    text = raw
+                calls.setdefault(tid, {"id": tid, "tool": "", "input": None, "ts": str(row.get("timestamp") or ""), "result": ""})
+                calls[tid]["result"] = text
+                if tid not in order:
+                    order.append(tid)
+    return [calls[t] for t in order]
+
+
+def _grok_tool_calls(path: str) -> list[dict[str, Any]]:
+    """Grok session updates.jsonl: session/update rows keyed by toolCallId."""
+    calls: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
+    for row in _read_jsonl(path):
+        params = row.get("params") or {}
+        upd = params.get("update") if isinstance(params, dict) else None
+        if not isinstance(upd, dict):
+            continue
+        tid = str(upd.get("toolCallId") or upd.get("tool_call_id") or "")
+        if not tid:
+            continue
+        call = calls.setdefault(tid, {"id": tid, "tool": "", "input": None, "ts": "", "result": ""})
+        if tid not in order:
+            order.append(tid)
+        if not call["ts"]:
+            call["ts"] = str(row.get("timestamp") or "")
+        title = upd.get("title") or upd.get("tool_name") or upd.get("kind")
+        if title and not call["tool"]:
+            call["tool"] = str(title)
+        if upd.get("rawInput") is not None and call["input"] is None:
+            call["input"] = upd.get("rawInput")
+        if upd.get("rawOutput") is not None:
+            call["result"] = flatten_text(upd.get("rawOutput"))
+        elif isinstance(upd.get("content"), list) and not call["result"]:
+            texts = []
+            for c in upd["content"]:
+                if isinstance(c, dict):
+                    inner = c.get("content") if isinstance(c.get("content"), dict) else c
+                    if isinstance(inner, dict) and inner.get("text"):
+                        texts.append(str(inner["text"]))
+            if texts:
+                call["result"] = "\n".join(texts)
+    return [calls[t] for t in order]
+
+
+def transcript_tool_calls(path: str) -> list[dict[str, Any]]:
+    if path.endswith("updates.jsonl") or "/.grok/" in path:
+        return _grok_tool_calls(path)
+    return _claude_tool_calls(path)
+
+
+def paragraphs_around(text: str, max_paragraphs: int = 5, context: int = 1) -> list[str]:
+    """Redacted paragraphs (line before, matched line, line after) around each secret hit."""
+    lines = text.split("\n")
+    hit_lines: list[int] = []
+    for _kind, pattern in SECRET_PATTERNS:
+        for match in pattern.finditer(text):
+            if ignore_span(text, match.start(), match.end()):
+                continue
+            hit_lines.append(text.count("\n", 0, match.start()))
+    out: list[str] = []
+    done: set[int] = set()
+    for ln in sorted(set(hit_lines)):
+        if ln in done:
+            continue
+        lo, hi = max(0, ln - context), min(len(lines), ln + context + 1)
+        done.update(range(lo, hi))
+        block = "\n".join(f"{i + 1:>6}| {redact_text(lines[i])[:300]}" for i in range(lo, hi))
+        out.append(block)
+        if len(out) >= max_paragraphs:
+            out.append(f"… {len(set(hit_lines)) - max_paragraphs} more matching line(s) not shown")
+            break
+    return out
+
+
+def export_evidence(session: str, out_dir: str = "") -> tuple[str, str]:
+    """Write <out_dir>/<session>-exposure.md. Returns (path, one-line summary).
+
+    Everything written passes through redact_text. The file is for a person to read
+    and decide; it is not a copy of the transcript."""
+    rows = ledger_for_session(session)
+    marks = [r for r in marker_entries() if str(r.get("session")) == session]
+    transcript = next((str(r.get("transcript")) for r in rows + marks if r.get("transcript")), "")
+    out_dir = out_dir or os.path.join(GUARD_HOME, "exports")
+    os.makedirs(out_dir, exist_ok=True)
+    path = os.path.join(out_dir, f"{session}-exposure.md")
+
+    doc: list[str] = [f"# live-ops-guard evidence — session {session}", "",
+                      f"Generated {_now()} for {OPERATOR}. Every value below is redacted; kinds and positions are real.", ""]
+    doc += ["## Ledger", ""]
+    if rows:
+        doc += [f"- {r.get('ts')}  {r.get('stage')}  **{r.get('decision')}**  `{r.get('tool') or '-'}`  {', '.join(r.get('kinds') or []) or '-'}" for r in rows]
+    else:
+        doc.append("- (no ledger rows for this session)")
+    doc += ["", "## Exposed paragraphs", ""]
+
+    found = 0
+    calls: list[dict[str, Any]] = []
+    if transcript and os.path.exists(transcript):
+        calls = transcript_tool_calls(transcript)
+        doc.append(f"Transcript: `{transcript}` ({len(calls)} tool calls scanned)")
+        doc.append("")
+    elif transcript:
+        doc.append(f"Transcript `{transcript}` is not readable from here; only the ledger is available.")
+    else:
+        doc.append("No transcript path recorded for this session; only the ledger is available.")
+
+    for call in calls:
+        result = str(call.get("result") or "")
+        input_text = flatten_text(call.get("input"))
+        secrets = find_secrets(result)
+        input_secrets = find_secrets(input_text)
+        reads: list[str] = []
+        if isinstance(call.get("input"), dict):
+            cmd = str(call["input"].get("command") or "")
+            if cmd:
+                reads = secret_read_findings(cmd)
+        if not (secrets or input_secrets or reads):
+            continue
+        found += 1
+        doc.append(f"### {found}. `{call.get('tool') or '?'}` at {call.get('ts') or '?'}")
+        doc.append("")
+        why = []
+        if secrets:
+            why.append("secret-like value(s) in the RESULT: " + ", ".join(secrets))
+        if input_secrets:
+            why.append("secret-like value(s) in the INPUT: " + ", ".join(input_secrets))
+        if reads:
+            why.append("secret-store READ: " + ", ".join(reads))
+        doc.append("Why it was flagged: " + "; ".join(why))
+        doc.append("")
+        doc.append("Input (redacted, first 600 chars):")
+        doc.append("```")
+        doc.append(redact_text(input_text)[:600])
+        doc.append("```")
+        if secrets:
+            count, _ = evidence_lines(result, max_matches=1)
+            doc.append(f"Result: {len(result)} chars, {count} match(es). Paragraphs around each match:")
+            doc.append("")
+            for block in paragraphs_around(result):
+                doc.append("```")
+                doc.append(block)
+                doc.append("```")
+        elif reads:
+            doc.append(f"Result: {len(result)} chars. A secret store's contents are not pattern-redacted, so they are NOT copied here; open the transcript yourself if you must see them.")
+        doc.append("")
+        doc.append("Your call: real value (rotate it) or false positive (code, docs, a test fixture)? Note it here: ____")
+        doc.append("")
+
+    if calls and not found:
+        doc.append("No tool call in the transcript matches the secret patterns now. The ledger says one did at the time; the transcript may have been rewritten with the redacted output, which is the intended outcome.")
+
+    summary = f"{found} flagged tool call(s), {len(rows)} ledger row(s), transcript {'read' if calls else 'unavailable'}"
+    body = "\n".join(doc) + "\n"
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(redact_text(body))
+    return path, summary
+
+
+# ---------------------------------------------------------------------------
 # review CLI
 # ---------------------------------------------------------------------------
 
 def review_cli(args: list[str]) -> int:
     ack = "--ack" in args
-    positional = [a for a in args if not a.startswith("--")]
+    export = "--export" in args
+    out_dir = ""
+    if "--out" in args:
+        idx = args.index("--out")
+        if idx + 1 < len(args):
+            out_dir = args[idx + 1]
+    positional = [a for a in args if not a.startswith("--") and a != out_dir]
     session = positional[0] if positional else ""
     rows_marker = marker_entries()
     if "--last" in args or session == "--last":
@@ -1557,7 +1805,8 @@ def review_cli(args: list[str]) -> int:
             print(f"  {sid}  [{items[0].get('runtime', '?')}]  {', '.join(reasons)}  x{len(items)}")
             if transcript:
                 print(f"      transcript: {transcript}")
-        print(f"\nNext: {review_command('<session>')}")
+        print(f"\nNext: {review_command('<session>')}            (ledger + hand-off)")
+        print(f"      {review_command('<session>')} --export   (redacted paragraphs, as a file)")
         return 0
 
     rows = ledger_for_session(session)
@@ -1579,6 +1828,10 @@ def review_cli(args: list[str]) -> int:
     print(f"  /trace-watch {session}        (if the session is still running)")
     print("Rotate any credential the ledger says was exposed. Then:")
     print(f"  {review_command(session)} --ack")
+    print(f"Need to see it first? {review_command(session)} --export   (redacted paragraphs, as a file)")
+    if export:
+        path, summary = export_evidence(session, out_dir)
+        print(f"\nevidence exported: {path}  ({summary})")
     if ack:
         removed = marker_ack(session)
         print(f"\nacknowledged: removed {removed} marker entr{'y' if removed == 1 else 'ies'} for {session}")
