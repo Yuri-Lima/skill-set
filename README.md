@@ -152,8 +152,9 @@ The guard keeps a trail: `ledger.jsonl` (one line per ask / redaction /
 fail-open, never the payload) and `NEEDS_TRACE_REVIEW` (sessions that
 exposed secret-like data). Session start nags about pending reviews, session
 stop prints the counts. `python3 ~/.grok/hooks/live-ops-guard/guard.py review`
-shows what is pending and hands off to `/trace-analysis`; `--ack` clears a
-session once a person has looked. The guard addresses you as "Dear Lazy User"
+shows what is pending and hands off to `/trace-analysis`; `--export` writes the
+exposed paragraphs (redacted) to a file so you can judge real vs false positive;
+`--ack` clears a session once a person has looked. The guard addresses you as "Dear Lazy User"
 unless `LIVE_OPS_GUARD_OPERATOR` is set — no real name or host lives in the repo.
 
 Start a new session (or reload skills) after install.

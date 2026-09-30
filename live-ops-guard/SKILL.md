@@ -39,13 +39,27 @@ writes the ledger and `NEEDS_TRACE_REVIEW`, and produces this, not a yes/no:
 ```
 EXPOSURE — Dear Lazy User, a secret-like value came back in a tool RESULT (`bash`): github-pat.
 Session <id> (claude) is now marked NEEDS_TRACE_REVIEW; the guard will not clear it.
+Evidence (redacted):
+  1 match(es) in a result of 2 chars
+  line 1 [github-pat]: deploy token: ***REDACTED:github-pat***
 
 Options:
   1. Proceed — keep working; review the trace at the end: python3 …/guard.py review <id>
   2. Stop — end here; rotate the exposed credential now.
   3. Recommended — Proceed. Claude Code applied the redaction before the value reached
      the model (verified for Bash and MCP results); still run the trace review at the end.
+  4. Evidence — export the exposed paragraphs of this session (redacted) to a file you can
+     read: python3 …/guard.py review <id> --export
 ```
+
+"Exposed" without evidence is not actionable, so every notice carries the
+tool, the match count and a redacted one-line snippet per hit, and option 4
+writes `exports/<session>-exposure.md`: the ledger rows, then for each flagged
+tool call its input (redacted), why it was flagged, and the paragraphs around
+each match (line before, matched line, line after, all redacted). Claude Code
+`.jsonl` and Grok `updates.jsonl` transcripts are both understood. A secret
+store's contents are never copied into the export. The file ends with a line
+for the operator's verdict: real value (rotate) or false positive.
 
 The recommendation depends on what happened: a redacted result on Claude Code
 says proceed; a redacted result on a runtime whose redaction support is not
@@ -54,8 +68,9 @@ the input says stop and rotate, because those values cannot be pattern-redacted
 or are already written.
 
 **Agent procedure on an exposure notice (both modes):** stop the task, show the
-notice verbatim, ask the operator to pick 1, 2 or 3 (with the ask-the-user tool
-when there is one), and wait. Do not retry, do not quote the value, never `--ack`.
+notice verbatim, ask the operator to pick 1, 2, 3 or 4 (with the ask-the-user tool
+when there is one), and wait. If they pick 4, run the `--export` command and give
+them the file path; do not paste the file into the chat. Do not retry, do not quote the value, never `--ack`.
 In Claude Code and Grok the post hook returns `decision: block`, so the agent is
 stopped by the runtime as well; in Cursor it arrives as context + user message.
 
@@ -104,6 +119,7 @@ looking at the trace:
 python3 ~/.grok/hooks/live-ops-guard/guard.py review            # what is pending
 python3 ~/.grok/hooks/live-ops-guard/guard.py review --last     # most recent flagged session
 python3 ~/.grok/hooks/live-ops-guard/guard.py review <session>  # ledger + hand-off
+python3 ~/.grok/hooks/live-ops-guard/guard.py review <session> --export [--out DIR]   # redacted paragraphs
 python3 ~/.grok/hooks/live-ops-guard/guard.py review <session> --ack
 ```
 
@@ -206,5 +222,5 @@ If the runtime prompts because of `live-ops-guard`, treat a reject as final for 
 - Cursor hook config: `~/.cursor/hooks.json`; entry `~/.cursor/hooks/live-ops-guard.py`
 - Hook script: `~/.grok/hooks/live-ops-guard/guard.py`
 - Live hosts: `~/.grok/hooks/live-ops-guard/live-hosts.txt`; GitLab hosts: `gitlab-hosts.txt`
-- Ledger / marker: `~/.grok/hooks/live-ops-guard/ledger.jsonl`, `NEEDS_TRACE_REVIEW`
+- Ledger / marker / exports: `~/.grok/hooks/live-ops-guard/ledger.jsonl`, `NEEDS_TRACE_REVIEW`, `exports/<session>-exposure.md`
 - Self-test: `bash $SKILL_DIR/scripts/test-guard.sh` (runs `hooks/test_guard.py` in a throwaway home)

@@ -258,7 +258,7 @@ def main() -> int:
     check("updatedToolOutput" in hso and "glpat-BBBB" not in json.dumps(post), "post string result redacted", json.dumps(post))
     check(post.get("decision") == "block" and "Options:" in post.get("reason", ""), "post exposure blocks the agent and carries the options", json.dumps(post)[:300])
     check("EXPOSURE" in post.get("systemMessage", "") and "3. Recommended" in post.get("systemMessage", ""), "operator sees the exposure notice with a recommendation")
-    check("ask them to pick option 1, 2 or 3" in hso.get("additionalContext", ""), "agent is told to present options, not continue")
+    check("ask them to pick option 1, 2, 3 or 4" in hso.get("additionalContext", ""), "agent is told to present options, not continue")
 
     cursor_post = mod.post_decision({"hook_event_name": "postToolUse", "cursor_version": "1.0.0", "mcp_server_name": "gitlab", "tool_name": "list_merge_requests", "tool_output": f"prefix {FAKE_GLPAT} suffix"})
     check("additional_context" in cursor_post and "glpat-BBBB" not in json.dumps(cursor_post), "cursor post redaction")
@@ -371,6 +371,53 @@ def main() -> int:
     fo = mod._fail_open({**nb}, "unit")
     check("Options:" in fo.get("systemMessage", "") and "unguarded" in fo.get("systemMessage", ""), "notify: fail-open uses the options form", str(fo)[:300])
     check("--mode" in (ROOT / "guard.py").read_text(), "mode flag documented in script")
+    os.environ["LIVE_OPS_GUARD_MODE"] = "gate"
+
+    # --- evidence + export + grok label + tighter assignment pattern ---
+    os.environ["LIVE_OPS_GUARD_MODE"] = "notify"
+    check(mod.runtime_of({"session_id": "g1", "transcript_path": "/Users/x/.grok/sessions/p/g1/updates.jsonl"}) == "grok", "grok transcript path is labelled grok")
+    check(mod.runtime_of({"session_id": "c1", "transcript_path": "/Users/x/.claude/projects/p/c1.jsonl"}) == "claude", "claude transcript path is labelled claude")
+    code_like = "password: process.env.DB_PASSWORD\nSECRET_KEY = SOME_CONSTANT_NAME_HERE\napi_key: settings.API_KEY_NAME"
+    check(mod.find_secrets(code_like) == [], "identifiers after password:/secret= are code, not values", str(mod.find_secrets(code_like)))
+    real_like = "password=Sup3rS3cretValue2024xyz"
+    check("assignment-secret" in mod.find_secrets(real_like), "a real-looking assignment value still matches")
+    eb = {"session_id": "s-evidence", "transcript_path": "/tmp/e.jsonl", "hook_event_name": "PostToolUse", "tool_name": "Bash"}
+    r = mod.post_decision({**eb, "tool_input": {"command": "bash x.sh"}, "tool_response": f"line one\ntoken={FAKE_PAT}\nline three"})
+    msg = r.get("systemMessage", "")
+    check("Evidence (redacted):" in msg and "1 match(es)" in msg and "line 2 [github-pat]" in msg, "notice carries evidence lines", msg)
+    check("4. Evidence — export" in msg and "--export" in msg, "notice offers the export option", msg)
+    check("ghp_AAAA" not in msg and "***REDACTED:github-pat***" in msg, "evidence snippet is redacted")
+
+    # export: synthetic Claude transcript
+    ct = Path(HOME, "c-export.jsonl")
+    ct.write_text("\n".join([
+        json.dumps({"type": "assistant", "timestamp": "t1", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "tu1", "name": "Bash", "input": {"command": "bash x.sh"}}]}}),
+        json.dumps({"type": "user", "timestamp": "t2", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "tu1", "content": f"before\ndeploy {FAKE_PAT}\nafter"}]}, "toolUseResult": f"before\ndeploy {FAKE_PAT}\nafter"}),
+        json.dumps({"type": "assistant", "timestamp": "t3", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "tu2", "name": "Bash", "input": {"command": "ls"}}]}}),
+        json.dumps({"type": "user", "timestamp": "t4", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "tu2", "content": "a b c"}]}}),
+    ]) + "\n", encoding="utf-8")
+    mod.post_decision({"session_id": "s-cexp", "transcript_path": str(ct), "hook_event_name": "PostToolUse", "tool_name": "Bash", "tool_input": {"command": "bash x.sh"}, "tool_response": f"deploy {FAKE_PAT}"})
+    path, summary = mod.export_evidence("s-cexp", str(Path(HOME, "out")))
+    body = Path(path).read_text(encoding="utf-8")
+    check(path.endswith("s-cexp-exposure.md") and "1 flagged tool call" in summary, "claude export summary", summary)
+    check("ghp_AAAA" not in body and "***REDACTED:github-pat***" in body and "before" in body and "after" in body, "claude export has redacted paragraphs with context", body[:400])
+    check("`ls`" not in body and "a b c" not in body, "clean tool calls are not exported")
+
+    # export: synthetic Grok updates.jsonl
+    gt = Path(HOME, "fake-grok", "updates.jsonl"); gt.parent.mkdir(parents=True, exist_ok=True)
+    gt.write_text("\n".join([
+        json.dumps({"timestamp": "g1", "method": "session/update", "params": {"update": {"sessionUpdate": "tool_call", "toolCallId": "tc1", "title": "read_file", "rawInput": {"path": "config.py"}}}}),
+        json.dumps({"timestamp": "g2", "method": "session/update", "params": {"update": {"sessionUpdate": "tool_call_update", "toolCallId": "tc1", "status": "completed", "rawOutput": f"x = 1\nSECRET = {FAKE_GLPAT}\ny = 2"}}}),
+    ]) + "\n", encoding="utf-8")
+    mod.post_decision({"session_id": "s-gexp", "transcript_path": str(gt), "hook_event_name": "PostToolUse", "tool_name": "read_file", "tool_input": {"path": "config.py"}, "tool_response": f"SECRET = {FAKE_GLPAT}"})
+    gpath, gsummary = mod.export_evidence("s-gexp", str(Path(HOME, "out")))
+    gbody = Path(gpath).read_text(encoding="utf-8")
+    check("1 flagged tool call" in gsummary and "read_file" in gbody and "glpat-BBBB" not in gbody and "***REDACTED:gitlab-pat***" in gbody, "grok export parses session/update rows", gsummary + gbody[:300])
+    check(any(r.get("runtime") == "grok" for r in mod.ledger_for_session("s-gexp")), "grok session ledger row labelled grok")
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        mod.review_cli(["s-cexp", "--export", "--out", str(Path(HOME, "out2"))])
+    check("evidence exported:" in buf.getvalue() and Path(HOME, "out2", "s-cexp-exposure.md").exists(), "review --export --out writes the file", buf.getvalue()[-300:])
     os.environ["LIVE_OPS_GUARD_MODE"] = "gate"
 
     # --- item 2 (user request): no hard-coded host or person in the guard ---
