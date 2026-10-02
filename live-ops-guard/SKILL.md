@@ -26,10 +26,14 @@ The guard addresses the person at the keyboard as **Dear Lazy User** unless
 
 | Mode | Before a live call | On a real exposure |
 |------|--------------------|--------------------|
-| **`notify`** (default) | The call **runs**. Findings (ssh, GitLab/TeamCity write, secret-store read) go to the ledger and the agent gets a one-line note. No question is asked. | The guard **interrupts** with an exposure notice and three options — Proceed / Stop / Recommended. |
+| **`hybrid`** (default) | Like `notify`, except three things are still **held** with a permission ask: ssh/scp/sftp/sshfs/rsync to a host in `live-hosts.txt`, an irreversible GitLab action (merge, delete), an irreversible TeamCity action (delete, steps, VCS roots, agents). Everything else runs and is noted. | The guard **interrupts** with an exposure notice and four options — Proceed / Stop / Recommended / Evidence. |
+| `notify` | The call **runs**. Findings (ssh, GitLab/TeamCity write, secret-store read) go to the ledger and the agent gets a one-line note. No question is asked. | Same notice and options. |
 | `gate` | The call is **held** with a permission "ask" (the original behaviour). | Same notice and options. |
 
-Set with `--mode gate` on the hook command, or `LIVE_OPS_GUARD_MODE=gate`.
+Set with `--mode notify|gate` on the hook command, or `LIVE_OPS_GUARD_MODE=…`.
+Why hybrid: in the first two days of `notify` an agent merged a GitLab MR and ssh'd into
+the live-listed TeamCity host with nothing but a note to itself. Those two classes are the
+ones a note does not cover; a `.env` read or an ssh to a build agent is.
 
 A "real exposure" is one of: a secret-like value in a tool **result**, a
 secret store **read** (`cat .env`, `gh auth token`, …), a secret literal in a
@@ -74,7 +78,7 @@ them the file path; do not paste the file into the chat. Do not retry, do not qu
 In Claude Code and Grok the post hook returns `decision: block`, so the agent is
 stopped by the runtime as well; in Cursor it arrives as context + user message.
 
-**Agent procedure in `notify` mode before a live call:** run it. Say in one
+**Agent procedure in `hybrid`/`notify` mode before a live call:** run it (in `hybrid`, a live-listed host or an irreversible action will be held by the hook — treat a reject as final). Say in one
 line what you are about to do on the live host. The watcher agent below is for
 `gate` mode, or for when the operator asks for a review before a specific write.
 
@@ -119,7 +123,8 @@ files next to `guard.py` (or under `$LIVE_OPS_GUARD_HOME`) answer that:
 | (session stop) | the session has ledger rows | counts: asked / redacted / secret reads / fail-opens, and `Trace review required: YES → …` |
 
 The marker is **never cleared by the guard**. Only a person does it, after
-looking at the trace:
+looking at the trace. An acknowledgement is remembered (`acked.jsonl`): the session's own
+stop summary will not re-mark it unless a NEW exposure lands in its ledger.
 
 ```bash
 python3 ~/.grok/hooks/live-ops-guard/guard.py review            # what is pending
@@ -252,5 +257,5 @@ If the runtime prompts because of `live-ops-guard`, treat a reject as final for 
 - Cursor hook config: `~/.cursor/hooks.json`; entry `~/.cursor/hooks/live-ops-guard.py`
 - Hook script: `~/.grok/hooks/live-ops-guard/guard.py`
 - Live hosts: `~/.grok/hooks/live-ops-guard/live-hosts.txt`; GitLab hosts: `gitlab-hosts.txt`
-- Ledger / marker / exports: `~/.grok/hooks/live-ops-guard/ledger.jsonl`, `NEEDS_TRACE_REVIEW`, `exports/<session>-exposure.md`
+- Ledger / marker / acks / exports: `~/.grok/hooks/live-ops-guard/ledger.jsonl`, `NEEDS_TRACE_REVIEW`, `acked.jsonl`, `exports/<session>-exposure.md`
 - Self-test: `bash $SKILL_DIR/scripts/test-guard.sh` (runs `hooks/test_guard.py` in a throwaway home)
