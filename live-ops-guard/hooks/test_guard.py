@@ -513,6 +513,49 @@ def main() -> int:
     os.environ.pop("LIVE_OPS_GUARD_REDACT", None)
     os.environ["LIVE_OPS_GUARD_MODE"] = "gate"
 
+    # --- hybrid mode: notify, except live hosts and irreversible actions ---
+    os.environ["LIVE_OPS_GUARD_MODE"] = "hybrid"
+    Path(HOME, "live-hosts.txt").write_text("teamcity\nprod-db.internal\n", encoding="utf-8")
+    hb = {"session_id": "s-hybrid", "transcript_path": "/tmp/h.jsonl", "hook_event_name": "PreToolUse", "tool_name": "Bash"}
+    r = mod.pre_decision({**hb, "tool_use_id": "h1", "tool_input": {"command": "ssh other-box uptime"}})
+    check(not _is_ask(r) and "hybrid mode" in r.get("hookSpecificOutput", {}).get("additionalContext", ""), "hybrid: ssh to an unlisted host runs and is noted", str(r)[:200])
+    r = mod.pre_decision({**hb, "tool_use_id": "h2", "tool_input": {"command": "ssh teamcity uptime"}})
+    check(_is_ask(r) and "live-listed host" in json.dumps(r), "hybrid: ssh to a live-listed host is held", str(r)[:300])
+    r = mod.pre_decision({**hb, "tool_use_id": "h3", "tool_input": {"command": "scp dump.sql prod-db.internal:/tmp/"}})
+    check(_is_ask(r), "hybrid: scp toward a live-listed host is held", str(r)[:200])
+    r = mod.pre_decision({**hb, "tool_use_id": "h4", "tool_name": "mcp__gitlab__merge_merge_request", "tool_input": {"project_id": "1", "merge_request_iid": "2"}})
+    check(_is_ask(r), "hybrid: GitLab merge is held", str(r)[:200])
+    r = mod.pre_decision({**hb, "tool_use_id": "h5", "tool_name": "mcp__gitlab__create_issue_note", "tool_input": {"project_id": "1", "issue_iid": "2", "body": "x"}})
+    check(not _is_ask(r), "hybrid: GitLab note runs and is noted", str(r)[:200])
+    r = mod.pre_decision({**hb, "tool_use_id": "h6", "tool_name": "mcp__teamcity__teamcity_rest_delete", "tool_input": {"path": "/app/rest/buildTypes/id:X"}})
+    check(_is_ask(r), "hybrid: TeamCity delete is held", str(r)[:200])
+    r = mod.pre_decision({**hb, "tool_use_id": "h7", "tool_name": "mcp__teamcity__teamcity_rest_post", "tool_input": {"path": "/app/rest/buildQueue", "body": "{\"personal\":true}"}})
+    check(not _is_ask(r), "hybrid: personal TeamCity build runs and is noted", str(r)[:200])
+    r = mod.pre_decision({**hb, "tool_use_id": "h8", "tool_input": {"command": "ssh teamcity-agent-external-2 'd=$(ls -d /opt/buildagent/work/*/.nx 2>/dev/null | head -3); echo $d'"}})
+    check(not _is_ask(r) and "destructive" not in json.dumps(r) and "reads a TeamCity data path" in json.dumps(r), "hybrid + FP4: read-only ls on a TeamCity path is not destructive", str(r)[:300])
+    os.environ.pop("LIVE_OPS_GUARD_MODE", None)
+    check(mod.mode_of() == "hybrid", "hybrid is the default")
+    Path(HOME, "live-hosts.txt").write_text("", encoding="utf-8")
+
+    # --- field false positives 1-3 ---
+    check(mod.secret_read_findings("grep -nE 'process\\.argv|process\\.env\\.|--[a-z-]+' scripts/x.js") == [], "FP1: grep pattern with process\\.env is not a .env read")
+    check(mod.secret_read_findings("echo \"=== service (image, command, env) ===\"; python3 x.py") == [], "FP2: the word env in quoted text is not a dump")
+    check(mod.secret_read_findings("env | grep TOKEN") == ["secret-read(env-dump)"], "FP2: env | grep is still a dump")
+    check(mod.find_secrets('re.findall(r"postgres://[^:\\s]+:[^@\\s]{8,}@", body)') == [], "FP3: regex source text is not a db url")
+    check(mod.find_secrets("DATABASE_URL=postgres://app:S3cretPassw0rdValue@db:5432/app") == ["db-url-password"], "FP3: a real db url still matches")
+
+    # --- ack memory: the stop summary does not re-mark an acknowledged session ---
+    os.environ["LIVE_OPS_GUARD_MODE"] = "notify"
+    ab = {"session_id": "s-ack", "transcript_path": "/tmp/a.jsonl", "hook_event_name": "PostToolUse", "tool_name": "Bash"}
+    mod.post_decision({**ab, "tool_use_id": "a1", "tool_input": {"command": "bash x.sh"}, "tool_response": f"t {FAKE_PAT}"})
+    check(any(m["session"] == "s-ack" for m in mod.marker_entries()), "ack: exposure marks the session")
+    mod.marker_ack("s-ack")
+    st = mod.stop_decision({"session_id": "s-ack", "transcript_path": "/tmp/a.jsonl", "hook_event_name": "Stop"})
+    check(st == {} and not any(m["session"] == "s-ack" for m in mod.marker_entries()), "ack: stop after ack neither re-marks nor nags", str(st)[:200])
+    mod.post_decision({**ab, "tool_use_id": "a2", "tool_input": {"command": "bash y.sh"}, "tool_response": f"t {FAKE_GLPAT}"})
+    check(any(m["session"] == "s-ack" for m in mod.marker_entries()), "ack: a NEW exposure after the ack marks the session again")
+    os.environ["LIVE_OPS_GUARD_MODE"] = "gate"
+
     # --- item 2 (user request): no hard-coded host or person in the guard ---
     src = (ROOT / "guard.py").read_text(encoding="utf-8")
     banned = ("nova." + "teachx", "yu" + "ri")  # spelled apart so this file is not itself a hit

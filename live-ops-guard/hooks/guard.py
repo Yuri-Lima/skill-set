@@ -25,6 +25,9 @@ Awareness files (all next to this script, or under $LIVE_OPS_GUARD_HOME):
 
 Modes (--mode, or $LIVE_OPS_GUARD_MODE; default "notify"):
 
+  hybrid  Default. Like notify, except three things are still HELD with a permission
+          ask: ssh/scp/… to a host listed in live-hosts.txt, an irreversible GitLab
+          action (merge, delete) and an irreversible TeamCity action (delete, steps).
   notify  Commands run. The guard records every finding in the ledger and,
           when a REAL exposure happens (secret-like value in a tool result,
           secret store read, secret literal in a tool input, fail-open), it
@@ -35,7 +38,7 @@ Modes (--mode, or $LIVE_OPS_GUARD_MODE; default "notify"):
           the same as in notify mode.
 
 CLI:
-  guard.py --event pre|post|start|stop [--runtime grok|cursor|claude] [--mode notify|gate]
+  guard.py --event pre|post|start|stop [--runtime grok|cursor|claude] [--mode hybrid|notify|gate]
   guard.py review [SESSION|--last] [--ack] [--export [--out DIR]]
 """
 
@@ -58,12 +61,36 @@ GITLAB_HOSTS_FILE = os.path.join(GUARD_HOME, "gitlab-hosts.txt")
 LEDGER_FILE = os.path.join(GUARD_HOME, "ledger.jsonl")
 MARKER_FILE = os.path.join(GUARD_HOME, "NEEDS_TRACE_REVIEW")
 DEDUPE_FILE = os.path.join(GUARD_HOME, "dedupe.txt")
+ACKED_FILE = os.path.join(GUARD_HOME, "acked.jsonl")
 
 # How the guard addresses the person at the keyboard. Generic on purpose:
 # no real name or host belongs in this public file.
 OPERATOR = os.environ.get("LIVE_OPS_GUARD_OPERATOR") or "Dear Lazy User"
 
-MODES = ("notify", "gate")
+MODES = ("hybrid", "notify", "gate")
+
+# In hybrid mode these finding shapes are still HELD with a permission ask; everything
+# else runs and is noted. Chosen from the first two days of field data: an agent merged a
+# GitLab MR and ssh'd into the live-listed TeamCity host with nothing but a note.
+HYBRID_GATE_PREFIXES = (
+    "SSH to live",
+    "interactive SSH to live",
+    "destructive SSH on live",
+    "irreversible GitLab",
+    "irreversible TeamCity",
+)
+HYBRID_GATE_CONTAINS = (
+    " toward live ",
+    " write toward live ",
+    " session on live ",
+)
+
+
+def hybrid_gated(findings: list[str]) -> list[str]:
+    return [
+        f for f in findings
+        if f.startswith(HYBRID_GATE_PREFIXES) or any(c in f for c in HYBRID_GATE_CONTAINS)
+    ]
 
 
 def redaction_enabled() -> bool:
@@ -74,12 +101,12 @@ def redaction_enabled() -> bool:
 
 
 def mode_of() -> str:
-    """notify (default) or gate. --mode wins over $LIVE_OPS_GUARD_MODE."""
+    """hybrid (default), notify or gate. --mode wins over $LIVE_OPS_GUARD_MODE."""
     forced = argv_value("--mode")
     if forced in MODES:
         return forced
     env = (os.environ.get("LIVE_OPS_GUARD_MODE") or "").lower()
-    return env if env in MODES else "notify"
+    return env if env in MODES else "hybrid"
 
 # ---------------------------------------------------------------------------
 # Secret patterns
@@ -154,7 +181,7 @@ SECRET_READ_VERB_RE = re.compile(
 )
 
 SECRET_READ_FILE_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
-    ("env-file", re.compile(r"(?<![\w/.-])\.env(?:\.(?!example|sample|template|dist)[\w-]+)?(?![\w.-])")),
+    ("env-file", re.compile(r"(?<![\w/.\\-])\.env(?:\.(?!example|sample|template|dist)[\w-]+)?(?![\w.-])")),
     ("ssh-private-key", re.compile(r"\.ssh/(?:id_[A-Za-z0-9_]+|[^\s/]*_key|[^\s/]*\.pem)(?!\.pub)(?![\w.-])")),
     ("aws-credentials", re.compile(r"\.aws/credentials\b")),
     ("netrc", re.compile(r"(?<![\w-])_?\.netrc\b")),
@@ -187,7 +214,7 @@ SECRET_READ_COMMAND_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
             r"(?i)\becho\s+[^\n]*\$\{?[A-Za-z_]*(?:TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|PRIVATE_KEY|_PAT|_KEY)\b"
         ),
     ),
-    ("env-dump", re.compile(r"(?:^|[\s;|&(])(?:printenv|env|set|export\s+-p)\s*(?:$|[|;&>)])")),
+    ("env-dump", re.compile(r"(?:^|[;|&(]\s*)(?:printenv|env|set|export\s+-p)\s*(?:$|[|;&>)])")),
     ("history-dump", re.compile(r"(?i)\bhistory\s*(?:$|\|)")),
 ]
 
@@ -306,6 +333,36 @@ TEAMCITY_DATA_PATH = re.compile(
     r"|TeamCity/data"
     r")"
 )
+
+# Remote commands that only read. Used to decide whether touching a TeamCity data path
+# over ssh is destructive (rm, tee, sed -i …) or just a look (ls, cat, cd …).
+READ_ONLY_REMOTE = re.compile(
+    r"(?i)^(?:"
+    r"true|false|echo|printf|date|uptime|hostname|uname|whoami|id|pwd|cd|test|\[|type|which|env|printenv"
+    r"|df|du|free|ps|top|ls|stat|file|wc|head|tail|cat|less|more|find|locate|grep|rg|awk|sort|uniq|cut|tr"
+    r"|journalctl|dmesg|systemctl\s+(?:status|is-active|is-enabled|show|list-units|cat)"
+    r"|docker\s+(?:ps|logs|inspect|images|info)|ip|ss|netstat"
+    r"|git\s+(?:status|log|diff|show|rev-parse|branch)"
+    r")(?:\s|$)"
+)
+
+# `d=$(ls …)`, `W=$(ls -d …)`, `FOO=bar ls`: strip assignment prefixes before the verb check.
+REMOTE_ASSIGN_PREFIX = re.compile(r"^\s*(?:\w+=\$\(\s*)?(?:\w+=\S*\s+)*")
+
+
+def remote_is_read_only(remote: str) -> bool:
+    """Every segment of the remote command starts with a read-only verb and nothing destructive appears."""
+    if DESTRUCTIVE_REMOTE.search(remote):
+        return False
+    for seg in command_segments(remote):
+        body = REMOTE_ASSIGN_PREFIX.sub("", seg)
+        body = body.lstrip("( ")
+        if not body:
+            continue
+        if not READ_ONLY_REMOTE.match(body):
+            return False
+    return True
+
 
 SSH_OPTION_TAKES_VALUE = {
     "b", "c", "D", "E", "e", "F", "I", "i", "J", "L", "l", "m", "O", "o",
@@ -512,12 +569,16 @@ def remote_access_findings(command: str, live_hosts: set[str]) -> list[str]:
                     f"interactive SSH to {label} {host} "
                     "(full shell; cannot see later commands)"
                 )
-            elif DESTRUCTIVE_REMOTE.search(remote) or TEAMCITY_DATA_PATH.search(remote):
+            elif DESTRUCTIVE_REMOTE.search(remote) or (
+                TEAMCITY_DATA_PATH.search(remote) and not remote_is_read_only(remote)
+            ):
                 # redact_text: the remote command may carry a secret and this
                 # string ends up in the operator prompt and the agent context.
                 findings.append(
                     f"destructive SSH on {label} {host}: {redact_text(remote[:160])}"
                 )
+            elif TEAMCITY_DATA_PATH.search(remote):
+                findings.append(f"SSH on {label} {host} reads a TeamCity data path")
             continue
 
         if binary == "rsync":
@@ -813,6 +874,17 @@ BENIGN_ASSIGNMENT_KEYS = {
 BENIGN_VALUE_PREFIXES = ("pk_live_", "pk_test_", "ssh-rsa", "ssh-ed25519", "ecdsa-sha2")
 
 
+REGEX_METACHARS = set("[](){}\\|*?^$")
+VALUE_KINDS_FILTERED_FOR_REGEX = {"db-url-password", "bearer-token", "basic-auth", "assignment-secret"}
+
+
+def _looks_like_regex_source(text: str) -> bool:
+    """A pattern such as `scheme://[^:]+:[^@]{8,}@` is regex source, not a URL. Real tokens,
+    URL passwords and header values do not carry regex metacharacters (in a URL they would
+    be percent-encoded)."""
+    return any(ch in REGEX_METACHARS for ch in text)
+
+
 def _benign_assignment(match: re.Match[str]) -> bool:
     key = (match.group(1) or "").lower()
     value = match.group(2) or ""
@@ -833,6 +905,8 @@ def secret_matches(text: str) -> list[tuple[int, int, str]]:
             if ignore_span(text, match.start(), match.end()):
                 continue
             if kind == "assignment-secret" and _benign_assignment(match):
+                continue
+            if kind in VALUE_KINDS_FILTERED_FOR_REGEX and _looks_like_regex_source(match.group(0)):
                 continue
             hits.append((match.start(), match.end(), kind))
     specific = [h for h in hits if h[2] != "assignment-secret"]
@@ -1101,6 +1175,8 @@ def finding_kinds(findings: list[str]) -> list[str]:
             add("ssh-destructive")
         elif item.startswith("SSH to"):
             add("ssh")
+        elif item.startswith("SSH on") and "TeamCity data path" in item:
+            add("ssh-teamcity-path")
         elif " write toward " in item:
             add("remote-write")
         elif " toward " in item or " session on " in item:
@@ -1246,10 +1322,22 @@ def marker_entries() -> list[dict[str, Any]]:
     return _read_jsonl(MARKER_FILE)
 
 
+def acked_rows_for(session: str) -> int:
+    """Ledger row count at the time the operator last acknowledged this session (-1 = never)."""
+    best = -1
+    for row in _read_jsonl(ACKED_FILE):
+        if str(row.get("session")) == session:
+            best = max(best, int(row.get("ledger_rows") or 0))
+    return best
+
+
 def marker_ack(session: str) -> int:
     rows = marker_entries()
     keep = [row for row in rows if str(row.get("session")) != session]
     removed = len(rows) - len(keep)
+    # Remember the ack so the session's own stop summary does not re-mark it while
+    # nothing new happened. A new exposure (ledger grows) marks it again as usual.
+    _append_jsonl(ACKED_FILE, {"ts": _now(), "session": session, "ledger_rows": len(ledger_for_session(session))})
     try:
         if keep:
             with open(MARKER_FILE, "w", encoding="utf-8") as handle:
@@ -1563,9 +1651,19 @@ def pre_decision(event: dict[str, Any]) -> dict[str, Any]:
             ledger_write(normalized, stage="pre", decision="allow", tool=tool, kinds=kinds)
         return _with_nag(_pre_output(runtime, "allow"), runtime, nag)
 
-    if mode_of() == "gate":
+    mode = mode_of()
+    if mode == "gate":
         ledger_write(normalized, stage="pre", decision="ask", tool=tool, kinds=kinds)
         return _pre_output(runtime, "ask", findings_reason(findings))
+    if mode == "hybrid":
+        gated = hybrid_gated(findings)
+        if gated:
+            ledger_write(normalized, stage="pre", decision="ask", tool=tool, kinds=kinds, note="hybrid gate")
+            reason = findings_reason(findings) + (
+                "\n(hybrid mode holds this call because it is a live-listed host or an irreversible "
+                "GitLab/TeamCity action; everything else runs and is only noted.)"
+            )
+            return _pre_output(runtime, "ask", reason)
 
     # notify mode: the call runs. A secret literal in the INPUT is already an exposure.
     secret_kinds = [k for k in kinds if k.startswith("secret:")]
@@ -1586,7 +1684,7 @@ def pre_decision(event: dict[str, Any]) -> dict[str, Any]:
 
     ledger_write(normalized, stage="pre", decision="allow-noted", tool=tool, kinds=kinds)
     agent_note = (
-        "live-ops-guard (notify mode) let this call run and recorded it in the ledger: "
+        f"live-ops-guard ({mode} mode) let this call run and recorded it in the ledger: "
         + "; ".join(findings)
         + ". If it is a live write or ssh the operator did not ask for, stop and say so."
     )
@@ -1810,9 +1908,9 @@ def stop_decision(event: dict[str, Any]) -> dict[str, Any]:
     runtime = runtime_of(event)
     rows = ledger_for_session(session)
     counts = session_counts(rows)
-    if rows and needs_review(counts) and not any(
-        str(r.get("session")) == session for r in marker_entries()
-    ):
+    already_marked = any(str(r.get("session")) == session for r in marker_entries())
+    acked_at = acked_rows_for(session)
+    if rows and needs_review(counts) and not already_marked and len(rows) > acked_at:
         marker_add(event, "session-summary", [])
     text = stop_summary(session)
     if not text:
@@ -1821,6 +1919,8 @@ def stop_decision(event: dict[str, Any]) -> dict[str, Any]:
     # ledger grew since the last summary for this session.
     if seen_before(f"{session}|stop|{len(rows)}"):
         return {}
+    if acked_at >= len(rows):
+        return {}  # the operator already reviewed everything in this ledger
     if runtime == "claude":
         # systemMessage reaches the operator without forcing another agent round.
         return {"systemMessage": text}

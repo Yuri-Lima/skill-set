@@ -108,3 +108,16 @@
 {"id": "read-37", "tier": "must", "kind": "read", "text": "cp .env /tmp/", "expect": ["env-file"], "note": "copy exposes too"}
 {"id": "read-38", "tier": "must", "kind": "read", "text": "source .env && npm start", "expect": ["env-file"], "note": ""}
 {"id": "read-39", "tier": "stretch", "kind": "read", "text": "cat config/credentials.json", "expect": [], "note": "stretch: not covered by name"}
+{"id": "read-fp-grep-process-env", "tier": "must", "kind": "read", "text": "grep -nE 'process\\\\.argv|process\\\\.env\\\\.|--[a-z-]+|WORKSPACE_ROOTS' scripts/check-types.js", "expect": [], "note": "field FP: a grep PATTERN mentioning process\\.env is not a read of .env"}
+{"id": "read-fp-echo-env-word", "tier": "must", "kind": "read", "text": "echo \"=== docker-compose.yml: phoenix-system service (image, command, env) ===\"; python3 parse.py", "expect": [], "note": "field FP: the word env inside quoted text is not an env dump"}
+{"id": "read-tp-env-pipe", "tier": "must", "kind": "read", "text": "env | grep -i token", "expect": ["env-dump"], "note": "still a dump"}
+{"id": "read-tp-env-paren", "tier": "must", "kind": "read", "text": "(env) > /tmp/all.txt", "expect": ["env-dump"]}
+{"id": "read-tp-grep-env-file", "tier": "must", "kind": "read", "text": "grep -n DATABASE_URL .env", "expect": ["env-file"], "note": "grep OF the file is a read"}
+{"id": "fp-regex-db-url", "tier": "must", "kind": "secret", "text": "leak = re.findall(r\"postgres://[^:\\\\s]+:[^@\\\\s]{8,}@\", body)", "expect": [], "note": "field FP: regex source text is not a URL with a password"}
+{"id": "fp-regex-bearer", "tier": "must", "kind": "secret", "text": "BEARER_RE = re.compile(r\"Bearer\\\\s+([A-Za-z0-9._-]{24,})\")", "expect": [], "note": "regex source text"}
+{"id": "fp-regex-assignment", "tier": "must", "kind": "secret", "text": "r\"(api_key|password)\\\\s*[:=]\\\\s*([^\\\\s'\\\"]{16,})\"", "expect": [], "note": "regex source text"}
+{"id": "tp-db-url-still", "tier": "must", "kind": "secret", "text": "DATABASE_URL={{lit:postgres}}{{lit:://app:}}S3cretPassw0rdValue@db.internal:5432/app", "expect": ["db-url-password"], "note": "a real URL still matches after the regex-text filter"}
+{"id": "shell-ssh-readonly-tc-path", "tier": "must", "kind": "shell", "text": "ssh teamcity-agent-external-2 'd=$(ls -d /opt/buildagent/work/*/.nx/workspace-data 2>/dev/null | head -3); echo $d'", "expect": ["ssh", "ssh-teamcity-path"], "note": "field FP: ls on a TeamCity path is not destructive"}
+{"id": "shell-ssh-readonly-tc-cd", "tier": "must", "kind": "shell", "text": "ssh teamcity-agent-external-2 'cd /opt/buildagent/work/922a0eab13b63b67 && ls'", "expect": ["ssh", "ssh-teamcity-path"]}
+{"id": "shell-ssh-destructive-tc", "tier": "must", "kind": "shell", "text": "ssh teamcity-agent-external-2 'rm -rf /opt/buildagent/work/922a0eab13b63b67/.nx'", "expect": ["ssh", "ssh-destructive", "suspicious"], "note": "a real delete on a TeamCity path stays destructive"}
+{"id": "shell-ssh-tc-write", "tier": "must", "kind": "shell", "text": "ssh teamcity 'echo x >> /opt/teamcity/conf/internal.properties'", "expect": ["ssh", "ssh-destructive"], "note": "a write into TeamCity data is destructive"}
