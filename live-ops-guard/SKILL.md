@@ -71,7 +71,7 @@ verified says check the transcript first; a secret-store read or a secret in
 the input says stop and rotate, because those values cannot be pattern-redacted
 or are already written.
 
-**Agent procedure on an exposure notice (both modes):** stop the task, show the
+**Agent procedure on an exposure notice (`immediate` interrupt only):** stop the task, show the
 notice verbatim, ask the operator to pick 1, 2, 3 or 4 (with the ask-the-user tool
 when there is one), and wait. If they pick 4, run the `--export` command and give
 them the file path; do not paste the file into the chat. Do not retry, do not quote the value, never `--ack`.
@@ -108,6 +108,21 @@ and Cursor get a one-line entry file that runs it). It flags:
 **Cursor gate:** `permission: ask` is enforced on `beforeMCPExecution` and `beforeShellExecution` only. Cursor `preToolUse` accepts `ask` but does not hold — do not treat it as the gate.
 
 After `./install.sh --skill live-ops-guard --global`, the installer writes the Grok hook + agent, merges the Claude Code hook entries into `~/.claude/settings.json`, and merges the Cursor hook entries. Paste live SSH Host aliases into `~/.grok/hooks/live-ops-guard/live-hosts.txt` and self-hosted GitLab hostnames into `gitlab-hosts.txt` next to it (`gitlab.com` and any `gitlab.*` host are recognised without it). Do not invent a hostname, alias, or IP. Do not commit the filled files.
+
+## When the operator hears about it
+
+| `LIVE_OPS_GUARD_INTERRUPT` | Per event | End of turn |
+|----------------------------|-----------|-------------|
+| **`end-of-turn`** (default) | The exposure is recorded, redacted and noted to the **agent** only ("recorded; reported at the end of the turn; do not quote the value"). Nothing interrupts the operator. | The Stop hook asks the agent to **append one turn report** to its final reply: every event the guard saw since the last report (held / noted / redacted / exposure, with the redacted evidence line), whether the session is marked, and the four options. Once per turn, only when something new happened, never while the agent is already continuing. |
+| `immediate` | The agent is **stopped** at each exposure and must present the notice and the options before continuing. | The classic session summary. |
+
+The hybrid holds (live-listed host, irreversible GitLab/TeamCity) are permission asks in
+both settings — those are the questions worth asking at the moment they happen.
+
+**Agent procedure on a turn report (end-of-turn):** append it verbatim as the last section
+of the reply and stop. Do not run `--ack`. If the operator answers with an option, act on
+that option: 1 means carry on, 2 means stop and name what to rotate (kinds, never the value),
+3 is the guard's recommendation, 4 means run the `--export` command and give the file path.
 
 ## The trail: ledger, marker, review
 
@@ -257,5 +272,5 @@ If the runtime prompts because of `live-ops-guard`, treat a reject as final for 
 - Cursor hook config: `~/.cursor/hooks.json`; entry `~/.cursor/hooks/live-ops-guard.py`
 - Hook script: `~/.grok/hooks/live-ops-guard/guard.py`
 - Live hosts: `~/.grok/hooks/live-ops-guard/live-hosts.txt`; GitLab hosts: `gitlab-hosts.txt`
-- Ledger / marker / acks / exports: `~/.grok/hooks/live-ops-guard/ledger.jsonl`, `NEEDS_TRACE_REVIEW`, `acked.jsonl`, `exports/<session>-exposure.md`
+- Ledger / marker / acks / reports / exports: `~/.grok/hooks/live-ops-guard/ledger.jsonl`, `NEEDS_TRACE_REVIEW`, `acked.jsonl`, `reported.jsonl`, `exports/<session>-exposure.md`
 - Self-test: `bash $SKILL_DIR/scripts/test-guard.sh` (runs `hooks/test_guard.py` in a throwaway home)

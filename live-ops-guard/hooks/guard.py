@@ -23,7 +23,14 @@ Awareness files (all next to this script, or under $LIVE_OPS_GUARD_HOME):
                       read, or the guard failed open). Not cleared by the
                       guard itself: `guard.py review <session> --ack`.
 
-Modes (--mode, or $LIVE_OPS_GUARD_MODE; default "notify"):
+Interrupt (--interrupt, or $LIVE_OPS_GUARD_INTERRUPT; default "end-of-turn"):
+
+  end-of-turn  An exposure is recorded, redacted and noted to the agent quietly; the
+               operator gets ONE account of everything the guard did when the turn ends,
+               appended to the final reply, with the options.
+  immediate    The agent is stopped at each exposure and must present the options.
+
+Modes (--mode, or $LIVE_OPS_GUARD_MODE; default "hybrid"):
 
   hybrid  Default. Like notify, except three things are still HELD with a permission
           ask: ssh/scp/… to a host listed in live-hosts.txt, an irreversible GitLab
@@ -39,6 +46,7 @@ Modes (--mode, or $LIVE_OPS_GUARD_MODE; default "notify"):
 
 CLI:
   guard.py --event pre|post|start|stop [--runtime grok|cursor|claude] [--mode hybrid|notify|gate]
+           [--interrupt end-of-turn|immediate]   (or $LIVE_OPS_GUARD_INTERRUPT)
   guard.py review [SESSION|--last] [--ack] [--export [--out DIR]]
 """
 
@@ -91,6 +99,35 @@ def hybrid_gated(findings: list[str]) -> list[str]:
         f for f in findings
         if f.startswith(HYBRID_GATE_PREFIXES) or any(c in f for c in HYBRID_GATE_CONTAINS)
     ]
+
+
+INTERRUPTS = ("end-of-turn", "immediate")
+
+
+def interrupt_mode() -> str:
+    """end-of-turn (default): an exposure is recorded, redacted and noted to the agent, and the
+    operator gets ONE account of everything that happened when the turn ends, in the final
+    reply. immediate: the agent is stopped at each exposure and must present the options."""
+    forced = argv_value("--interrupt")
+    if forced in INTERRUPTS:
+        return forced
+    env = (os.environ.get("LIVE_OPS_GUARD_INTERRUPT") or "").lower()
+    return env if env in INTERRUPTS else "end-of-turn"
+
+
+REPORTED_FILE = os.path.join(GUARD_HOME, "reported.jsonl")
+
+
+def last_reported_rows(session: str) -> int:
+    best = 0
+    for row in _read_jsonl(REPORTED_FILE):
+        if str(row.get("session")) == session:
+            best = max(best, int(row.get("ledger_rows") or 0))
+    return best
+
+
+def set_last_reported(session: str, rows: int) -> None:
+    _append_jsonl(REPORTED_FILE, {"ts": _now(), "session": session, "ledger_rows": rows})
 
 
 def redaction_enabled() -> bool:
@@ -1669,7 +1706,8 @@ def pre_decision(event: dict[str, Any]) -> dict[str, Any]:
     secret_kinds = [k for k in kinds if k.startswith("secret:")]
     if secret_kinds:
         session = session_id_of(normalized)
-        ledger_write(normalized, stage="pre", decision="exposure", tool=tool, kinds=kinds)
+        _c, _s = evidence_lines(flatten_text(normalized.get("toolInput")), max_matches=1)
+        ledger_write(normalized, stage="pre", decision="exposure", tool=tool, kinds=kinds, note=(_s[0] if _s else ""))
         marker_add(normalized, "secret-in-tool-input", secret_kinds)
         count, snippets = evidence_lines(flatten_text(normalized.get("toolInput")))
         notice = exposure_notice(
@@ -1680,6 +1718,14 @@ def pre_decision(event: dict[str, Any]) -> dict[str, Any]:
             tool=tool,
             evidence=[f"{count} match(es) in the tool input", *snippets],
         )
+        if interrupt_mode() == "end-of-turn":
+            quiet_note = (
+                "live-ops-guard: this tool input carries a secret-like value "
+                f"({', '.join(k.split(':', 1)[1] for k in secret_kinds)}); it is already in the "
+                "transcript. Recorded; reported to the operator at the end of the turn. Prefer a "
+                "${VAR} reference next time; do not repeat the value."
+            )
+            return _pre_notify_output(runtime, quiet_note)
         return _pre_notify_output(runtime, exposure_agent_instruction(notice), notice)
 
     ledger_write(normalized, stage="pre", decision="allow-noted", tool=tool, kinds=kinds)
@@ -1785,11 +1831,13 @@ def post_decision(event: dict[str, Any]) -> dict[str, Any]:
         return {}
 
     kinds = ["secret:" + s for s in secrets] + read_kinds
+    _count, _snips = evidence_lines(text, max_matches=1) if secrets else (0, [])
+    note = _snips[0] if _snips else ""
     if secrets:
-        ledger_write(normalized, stage="post", decision="redacted", tool=name, kinds=kinds)
+        ledger_write(normalized, stage="post", decision="redacted", tool=name, kinds=kinds, note=note)
         marker_add(normalized, "secret-in-tool-result", kinds)
     else:
-        ledger_write(normalized, stage="post", decision="exposure", tool=name, kinds=kinds)
+        ledger_write(normalized, stage="post", decision="exposure", tool=name, kinds=kinds, note=note)
         marker_add(normalized, "secret-store-read", kinds)
 
     shown_kinds = secrets + [k.split(":", 1)[1] + " (read)" for k in read_kinds]
@@ -1815,7 +1863,17 @@ def post_decision(event: dict[str, Any]) -> dict[str, Any]:
         evidence = [f"command: {redact_text(cmd)[:160]}" if cmd else "command not visible in the event",
                     f"result: {len(text)} chars (not pattern-redacted; values from a store rarely match a token shape)"]
     notice = exposure_notice(where, shown_kinds, session, runtime, tool=name, redaction_applied=redaction_applied, evidence=evidence)
-    instruction = exposure_agent_instruction(notice)
+    if interrupt_mode() == "end-of-turn":
+        instruction = (
+            f"live-ops-guard recorded an exposure here ({', '.join(shown_kinds)}; "
+            f"{EXPOSURE_WHERE.get(where, where)}). It is in the ledger and will be reported to the "
+            "operator at the end of this turn — keep working, do not quote or reuse the value, "
+            "and do not run --ack."
+        )
+        quiet = True
+    else:
+        instruction = exposure_agent_instruction(notice)
+        quiet = False
 
     if runtime == "cursor":
         # postToolUse honours additional_context and updated_mcp_tool_output only.
@@ -1830,17 +1888,22 @@ def post_decision(event: dict[str, Any]) -> dict[str, Any]:
                 out["updated_mcp_tool_output"] = redact_result(result)
         return out
 
-    # decision=block does not undo the call (it already ran); it stops the agent and
-    # hands it the notice, so the operator gets the options instead of a silent continue.
-    hook_out: dict[str, Any] = {
-        "decision": "block",
-        "reason": instruction,
-        "hookSpecificOutput": {
-            "hookEventName": "PostToolUse",
-            "additionalContext": instruction,
-        },
-        "systemMessage": notice,
-    }
+    if quiet:
+        hook_out: dict[str, Any] = {
+            "hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": instruction},
+        }
+    else:
+        # decision=block does not undo the call (it already ran); it stops the agent and
+        # hands it the notice, so the operator gets the options instead of a silent continue.
+        hook_out = {
+            "decision": "block",
+            "reason": instruction,
+            "hookSpecificOutput": {
+                "hookEventName": "PostToolUse",
+                "additionalContext": instruction,
+            },
+            "systemMessage": notice,
+        }
     if secrets and redaction_enabled():
         # Same shape back, secrets replaced. Grok validates a built-in tool's replacement
         # against its own tagged shape, so the envelope must survive untouched.
@@ -1881,6 +1944,52 @@ def start_decision(event: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _row_line(row: dict[str, Any]) -> str:
+    ts = str(row.get("ts") or "")[11:16]
+    tool = row.get("tool") or "-"
+    kinds = ", ".join(str(k) for k in row.get("kinds") or []) or "-"
+    decision = str(row.get("decision") or "")
+    what = {
+        "ask": "HELD for your approval",
+        "allow-noted": "ran, noted",
+        "redacted": "secret-like value in the RESULT, redacted",
+        "exposure": "exposure (store read or secret in input)",
+        "fail-open": "guard could not evaluate it, let through",
+        "allow": "ran (unusual payload shape, scanned anyway)",
+    }.get(decision, decision)
+    line = f"  • {ts} `{tool}` — {what}: {kinds}"
+    if row.get("note") and decision in {"redacted", "exposure"}:
+        line += f"\n      evidence: {row['note']}"
+    return line
+
+
+def turn_report(session: str, runtime: str) -> str:
+    """Everything the guard did since the last report for this session, for the final reply."""
+    rows = ledger_for_session(session)
+    start = last_reported_rows(session)
+    new = rows[start:]
+    if not new:
+        return ""
+    counts = session_counts(new)
+    exposed = [r for r in new if r.get("decision") in {"redacted", "exposure", "fail-open"}]
+    lines = [f"live-ops-guard — what happened this turn ({len(new)} event{'s' if len(new) != 1 else ''}) for {OPERATOR}"]
+    lines += [_row_line(r) for r in new[-12:]]
+    if len(new) > 12:
+        lines.append(f"  … {len(new) - 12} earlier event(s) in the ledger")
+    if exposed:
+        where = "secret-store-read" if any(k.startswith("secret-read") for r in exposed for k in r.get("kinds") or []) else "secret-in-tool-result"
+        kinds = sorted({str(k).split(":", 1)[-1] for r in exposed for k in r.get("kinds") or []})
+        lines.append(f"Session {session} ({runtime}) is marked NEEDS_TRACE_REVIEW.")
+        lines.append("Options:")
+        lines.append(f"  1. Proceed — review the trace later: {review_command(session)}")
+        lines.append("  2. Stop — rotate the exposed credential now.")
+        lines.append(f"  3. Recommended — {recommended_for(where, kinds, runtime, redaction_applied=redaction_enabled())}")
+        lines.append(f"  4. Evidence — {review_command(session)} --export")
+    else:
+        lines.append("No exposure; nothing to review.")
+    return "\n".join(lines)
+
+
 def stop_summary(session: str) -> str:
     rows = ledger_for_session(session)
     counts = session_counts(rows)
@@ -1889,7 +1998,7 @@ def stop_summary(session: str) -> str:
     lines = [
         f"live-ops-guard — session {session} summary for {OPERATOR}",
         f"  guarded calls asked: {counts['asked']}",
-        f"  live calls allowed and noted (notify mode): {counts['noted']}",
+        f"  live calls allowed and noted: {counts['noted']}",
         f"  secret-like values redacted: {counts['redactions']}",
         f"  secret-store reads: {counts['secret_reads']}",
         f"  guard fail-opens: {counts['fail_opens']}",
@@ -1912,6 +2021,27 @@ def stop_decision(event: dict[str, Any]) -> dict[str, Any]:
     acked_at = acked_rows_for(session)
     if rows and needs_review(counts) and not already_marked and len(rows) > acked_at:
         marker_add(event, "session-summary", [])
+    if not rows:
+        return {}
+    continuing = bool(event.get("stopHookActive") or event.get("stop_hook_active"))
+    if str(event.get("reason") or "end_turn") != "end_turn":
+        return {}
+
+    if interrupt_mode() == "end-of-turn":
+        # One account per turn, in the final reply: the agent is asked to append the report
+        # and stop. Never while it is already continuing because of us (no loops), and only
+        # when there is something new since the last report.
+        report = turn_report(session, runtime)
+        if not report or continuing:
+            return {}
+        set_last_reported(session, len(rows))
+        ask = "Append this live-ops-guard turn report verbatim as the last section of your reply, then stop. Do not run --ack.\n\n" + report
+        if runtime == "claude":
+            return {"decision": "block", "reason": ask, "systemMessage": report}
+        if runtime == "cursor":
+            return {"followup_message": ask}
+        return {"hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": ask}}
+
     text = stop_summary(session)
     if not text:
         return {}
@@ -1925,16 +2055,10 @@ def stop_decision(event: dict[str, Any]) -> dict[str, Any]:
         # systemMessage reaches the operator without forcing another agent round.
         return {"systemMessage": text}
     if runtime == "cursor":
-        # stop honours followup_message only; it sends the agent one more message.
         if not needs_review(counts):
             return {}
         return {"followup_message": "Relay this live-ops-guard summary to the operator verbatim, then stop:\n" + text}
-    # grok: stdout on Stop is decision control; additionalContext keeps the agent working
-    # one round so it can relay the summary. Only when a review is due, never while a
-    # previous block is already continuing the turn.
-    if not needs_review(counts) or event.get("stopHookActive") or event.get("stop_hook_active"):
-        return {}
-    if str(event.get("reason") or "end_turn") != "end_turn":
+    if not needs_review(counts) or continuing:
         return {}
     return {
         "hookSpecificOutput": {

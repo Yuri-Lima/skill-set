@@ -19,6 +19,7 @@ HOME = tempfile.mkdtemp(prefix="live-ops-guard-test-")
 os.environ["LIVE_OPS_GUARD_HOME"] = HOME
 os.environ.pop("LIVE_OPS_GUARD_OPERATOR", None)
 os.environ["LIVE_OPS_GUARD_MODE"] = "gate"  # the classic cases below assume the gate
+os.environ["LIVE_OPS_GUARD_INTERRUPT"] = "immediate"  # per-event notices, as the classic cases expect
 
 ROOT = Path(__file__).resolve().parent
 spec = importlib.util.spec_from_file_location("live_ops_guard", ROOT / "guard.py")
@@ -554,6 +555,47 @@ def main() -> int:
     check(st == {} and not any(m["session"] == "s-ack" for m in mod.marker_entries()), "ack: stop after ack neither re-marks nor nags", str(st)[:200])
     mod.post_decision({**ab, "tool_use_id": "a2", "tool_input": {"command": "bash y.sh"}, "tool_response": f"t {FAKE_GLPAT}"})
     check(any(m["session"] == "s-ack" for m in mod.marker_entries()), "ack: a NEW exposure after the ack marks the session again")
+    os.environ["LIVE_OPS_GUARD_MODE"] = "gate"
+
+    # --- end-of-turn interrupt: quiet per event, one report in the final reply ---
+    os.environ["LIVE_OPS_GUARD_INTERRUPT"] = "end-of-turn"
+    os.environ["LIVE_OPS_GUARD_MODE"] = "hybrid"
+    check(mod.interrupt_mode() == "end-of-turn", "interrupt setting")
+    eb = {"session_id": "s-eot", "transcript_path": "/tmp/e.jsonl", "hook_event_name": "PostToolUse", "tool_name": "Bash"}
+    r = mod.post_decision({**eb, "tool_use_id": "e1", "tool_input": {"command": "bash x.sh"}, "tool_response": f"deploy {FAKE_PAT}"})
+    check("decision" not in r and "systemMessage" not in r and "end of this turn" in r["hookSpecificOutput"]["additionalContext"], "eot: exposure does not block or message the operator per event", str(r)[:300])
+    check("updatedToolOutput" in r["hookSpecificOutput"] and "ghp_AAAA" not in json.dumps(r), "eot: still redacts")
+    rows = mod.ledger_for_session("s-eot")
+    check(rows[-1]["decision"] == "redacted" and "REDACTED:github-pat" in rows[-1].get("note", ""), "eot: ledger row carries a redacted evidence note", str(rows[-1]))
+    r = mod.pre_decision({**eb, "hook_event_name": "PreToolUse", "tool_use_id": "e2", "tool_input": {"command": "ssh box uptime"}})
+    check(not _is_ask(r) and "systemMessage" not in r, "eot: noted call stays quiet")
+    r = mod.pre_decision({**eb, "hook_event_name": "PreToolUse", "tool_use_id": "e3", "tool_input": {"command": f"curl -H 'Authorization: Bearer {FAKE_PAT}' https://x"}})
+    check(not _is_ask(r) and "systemMessage" not in r and "end of the turn" in r["hookSpecificOutput"]["additionalContext"], "eot: secret in input is quiet to the operator, noted to the agent", str(r)[:300])
+    Path(HOME, "live-hosts.txt").write_text("teamcity\n", encoding="utf-8")
+    r = mod.pre_decision({**eb, "hook_event_name": "PreToolUse", "tool_use_id": "e4", "tool_input": {"command": "ssh teamcity uptime"}})
+    check(_is_ask(r), "eot: hybrid holds still ask (live host)")
+    Path(HOME, "live-hosts.txt").write_text("", encoding="utf-8")
+    st = mod.stop_decision({"session_id": "s-eot", "transcript_path": "/tmp/e.jsonl", "hook_event_name": "Stop"})
+    rep = st.get("reason", "")
+    check(st.get("decision") == "block" and "what happened this turn" in rep and "Append this" in rep, "eot: stop asks the agent to append the turn report", str(st)[:300])
+    check("HELD for your approval" in rep and "ran, noted" in rep and "redacted" in rep and "Options:" in rep and "4. Evidence" in rep, "eot: report lists held, noted and exposed events with options", rep)
+    check("ghp_AAAA" not in json.dumps(st) and "evidence: line 1 [github-pat]" in rep, "eot: report evidence is redacted")
+    check("systemMessage" in st, "eot: operator also sees the report as a system message")
+    st2 = mod.stop_decision({"session_id": "s-eot", "transcript_path": "/tmp/e.jsonl", "hook_event_name": "Stop", "stop_hook_active": True})
+    check(st2 == {}, "eot: no loop while the agent is already continuing", str(st2))
+    st3 = mod.stop_decision({"session_id": "s-eot", "transcript_path": "/tmp/e.jsonl", "hook_event_name": "Stop"})
+    check(st3 == {}, "eot: nothing new since the last report → silent", str(st3))
+    mod.pre_decision({**eb, "hook_event_name": "PreToolUse", "tool_use_id": "e5", "tool_input": {"command": "ssh box2 uptime"}})
+    st4 = mod.stop_decision({"session_id": "s-eot", "transcript_path": "/tmp/e.jsonl", "hook_event_name": "Stop"})
+    check("(1 event)" in st4.get("reason", "") and "No exposure" in st4.get("reason", ""), "eot: next turn reports only the new event, no options when nothing exposed", st4.get("reason", "")[:300])
+    gk = mod.stop_decision({"hookEventName": "stop", "hook_event_name": "Stop", "sessionId": "s-eot-g", "transcript_path": "/Users/x/.grok/s/updates.jsonl", "reason": "end_turn"})
+    check(gk == {}, "eot grok: silent with no events")
+    mod.post_decision({"hookEventName": "post_tool_use", "sessionId": "s-eot-g", "toolUseId": "g1", "transcript_path": "/Users/x/.grok/s/updates.jsonl", "toolName": "run_terminal_command", "toolInput": {"command": "bash x.sh"}, "toolResult": {"type": "Bash", "output_for_prompt": f"t {FAKE_PAT}"}})
+    gk = mod.stop_decision({"hookEventName": "stop", "hook_event_name": "Stop", "sessionId": "s-eot-g", "transcript_path": "/Users/x/.grok/s/updates.jsonl", "reason": "end_turn"})
+    check("additionalContext" in gk.get("hookSpecificOutput", {}) and "what happened this turn" in gk["hookSpecificOutput"]["additionalContext"], "eot grok: report via Stop additionalContext", str(gk)[:200])
+    ck = mod.stop_decision({"hook_event_name": "stop", "cursor_version": "1.0.0", "conversation_id": "s-eot-c", "status": "completed"})
+    check(ck == {}, "eot cursor: silent with no events")
+    os.environ["LIVE_OPS_GUARD_INTERRUPT"] = "immediate"
     os.environ["LIVE_OPS_GUARD_MODE"] = "gate"
 
     # --- item 2 (user request): no hard-coded host or person in the guard ---
