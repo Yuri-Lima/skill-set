@@ -588,6 +588,27 @@ def main() -> int:
     mod.pre_decision({**eb, "hook_event_name": "PreToolUse", "tool_use_id": "e5", "tool_input": {"command": "ssh box2 uptime"}})
     st4 = mod.stop_decision({"session_id": "s-eot", "transcript_path": "/tmp/e.jsonl", "hook_event_name": "Stop"})
     check("(1 event)" in st4.get("reason", "") and "No exposure" in st4.get("reason", ""), "eot: next turn reports only the new event, no options when nothing exposed", st4.get("reason", "")[:300])
+    # wrinkle 1: an acknowledged session's first report starts after the ack
+    wb = {"session_id": "s-wr", "transcript_path": "/tmp/w.jsonl", "hook_event_name": "PostToolUse", "tool_name": "Bash"}
+    mod.post_decision({**wb, "tool_use_id": "w1", "tool_input": {"command": "bash x.sh"}, "tool_response": f"t {FAKE_PAT}"})
+    mod.post_decision({**wb, "tool_use_id": "w2", "tool_input": {"command": "bash y.sh"}, "tool_response": f"t {FAKE_GLPAT}"})
+    mod.marker_ack("s-wr")
+    check(mod.stop_decision({"session_id": "s-wr", "transcript_path": "/tmp/w.jsonl", "hook_event_name": "Stop"}) == {}, "wrinkle 1: nothing to report right after an ack")
+    mod.pre_decision({**wb, "hook_event_name": "PreToolUse", "tool_use_id": "w3", "tool_input": {"command": "ssh box uptime"}})
+    sw = mod.stop_decision({"session_id": "s-wr", "transcript_path": "/tmp/w.jsonl", "hook_event_name": "Stop"})
+    check("(1 event)" in sw.get("reason", "") and "github-pat" not in sw.get("reason", ""), "wrinkle 1: the first report after an ack covers only new events", sw.get("reason", "")[:300])
+    # wrinkle 2: the marked line reflects the marker
+    check("not marked" not in sw.get("reason", "") and "No exposure" in sw.get("reason", ""), "wrinkle 2: no exposure → no marker claim", sw.get("reason", "")[:300])
+    mod.post_decision({**wb, "tool_use_id": "w4", "tool_input": {"command": "bash z.sh"}, "tool_response": f"t {FAKE_PAT}"})
+    mod.marker_ack("s-wr")  # operator acks before the turn ends (e.g. from another terminal)
+    rows_now = len(mod.ledger_for_session("s-wr"))
+    # simulate: ack happened but report window still includes the exposure
+    import json as _j
+    with open(Path(HOME, "acked.jsonl"), "a", encoding="utf-8") as fh:
+        fh.write(_j.dumps({"ts": "x", "session": "s-wr", "ledger_rows": rows_now - 1}) + "\n")
+    mod.set_last_reported("s-wr", rows_now - 1)
+    sw2 = mod.stop_decision({"session_id": "s-wr", "transcript_path": "/tmp/w.jsonl", "hook_event_name": "Stop"})
+    check(sw2 == {} or "is marked" not in sw2.get("reason", "") or any(m["session"] == "s-wr" for m in mod.marker_entries()), "wrinkle 2: 'is marked' only when the marker really has the session", str(sw2)[:300])
     gk = mod.stop_decision({"hookEventName": "stop", "hook_event_name": "Stop", "sessionId": "s-eot-g", "transcript_path": "/Users/x/.grok/s/updates.jsonl", "reason": "end_turn"})
     check(gk == {}, "eot grok: silent with no events")
     mod.post_decision({"hookEventName": "post_tool_use", "sessionId": "s-eot-g", "toolUseId": "g1", "transcript_path": "/Users/x/.grok/s/updates.jsonl", "toolName": "run_terminal_command", "toolInput": {"command": "bash x.sh"}, "toolResult": {"type": "Bash", "output_for_prompt": f"t {FAKE_PAT}"}})
