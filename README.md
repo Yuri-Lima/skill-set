@@ -153,6 +153,10 @@ Detection quality is scored against a labelled corpus (`live-ops-guard/evals/det
 `scripts/eval-detection.py`: precision/recall per kind, `must` cases gate the suite).
 Redaction is containment, not undo: `LIVE_OPS_GUARD_REDACT=off` disables it and the notice says so.
 
+By default the operator is not interrupted per event: an exposure is recorded, redacted and
+noted to the agent, and ONE turn report (what happened, evidence, options) is appended to the
+agent's final reply. `LIVE_OPS_GUARD_INTERRUPT=immediate` restores the stop-and-ask per event.
+
 The guard keeps a trail: `ledger.jsonl` (one line per ask / redaction /
 fail-open, never the payload) and `NEEDS_TRACE_REVIEW` (sessions that
 exposed secret-like data). Session start nags about pending reviews, session

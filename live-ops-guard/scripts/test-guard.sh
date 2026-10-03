@@ -4,8 +4,9 @@
 set -euo pipefail
 DIR="$(cd "$(dirname "$0")/.." && pwd)"
 G="$DIR/hooks/guard.py"
-export LIVE_OPS_GUARD_HOME LIVE_OPS_GUARD_MODE
+export LIVE_OPS_GUARD_HOME LIVE_OPS_GUARD_MODE LIVE_OPS_GUARD_INTERRUPT
 LIVE_OPS_GUARD_MODE=gate
+LIVE_OPS_GUARD_INTERRUPT=immediate
 LIVE_OPS_GUARD_HOME="$(mktemp -d)"
 trap 'rm -rf "$LIVE_OPS_GUARD_HOME"' EXIT
 fail=0
