@@ -1966,17 +1966,19 @@ def _row_line(row: dict[str, Any]) -> str:
 def turn_report(session: str, runtime: str) -> str:
     """Everything the guard did since the last report for this session, for the final reply."""
     rows = ledger_for_session(session)
-    start = last_reported_rows(session)
+    # Start after whatever the operator has already seen: the last report, or an
+    # acknowledgement (an acked session's first report must not replay old events).
+    start = max(last_reported_rows(session), acked_rows_for(session), 0)
     new = rows[start:]
     if not new:
         return ""
-    counts = session_counts(new)
     exposed = [r for r in new if r.get("decision") in {"redacted", "exposure", "fail-open"}]
+    marked = any(str(m.get("session")) == session for m in marker_entries())
     lines = [f"live-ops-guard — what happened this turn ({len(new)} event{'s' if len(new) != 1 else ''}) for {OPERATOR}"]
     lines += [_row_line(r) for r in new[-12:]]
     if len(new) > 12:
         lines.append(f"  … {len(new) - 12} earlier event(s) in the ledger")
-    if exposed:
+    if exposed and marked:
         where = "secret-store-read" if any(k.startswith("secret-read") for r in exposed for k in r.get("kinds") or []) else "secret-in-tool-result"
         kinds = sorted({str(k).split(":", 1)[-1] for r in exposed for k in r.get("kinds") or []})
         lines.append(f"Session {session} ({runtime}) is marked NEEDS_TRACE_REVIEW.")
@@ -1985,6 +1987,8 @@ def turn_report(session: str, runtime: str) -> str:
         lines.append("  2. Stop — rotate the exposed credential now.")
         lines.append(f"  3. Recommended — {recommended_for(where, kinds, runtime, redaction_applied=redaction_enabled())}")
         lines.append(f"  4. Evidence — {review_command(session)} --export")
+    elif exposed:
+        lines.append(f"Session {session} ({runtime}) is not marked: these events were already acknowledged. Nothing pending.")
     else:
         lines.append("No exposure; nothing to review.")
     return "\n".join(lines)
