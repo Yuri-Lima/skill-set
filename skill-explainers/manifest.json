@@ -37,24 +37,6 @@
     }
   },
   {
-    "slug": "explainer-claim-mr",
-    "dir": "02-claim-mr",
-    "clips": [
-      "Claim M-R posts a short note on a pull request so nobody starts the same review twice.",
-      "Paste a GitHub, GitLab, or Gitea URL. The agent writes claimed for review and stops.",
-      "If someone else already claimed it, the skill does not double-work. This one is general."
-    ],
-    "copy": {
-      "kicker": "/claim-mr · general",
-      "valueA": "Claim a review",
-      "methodA": "Short note on the PR",
-      "valueB": "Stop if taken",
-      "methodB": "GitHub, GitLab, or Gitea",
-      "chip": "GENERAL",
-      "footer": "/claim-mr — paste the URL"
-    }
-  },
-  {
     "slug": "explainer-claim-fix-ticket",
     "dir": "03-claim-fix-ticket",
     "clips": [

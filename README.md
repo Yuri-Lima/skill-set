@@ -5,7 +5,6 @@ Agent skills I reuse across Claude Code, Cursor, and Grok.
 | Skill | Invoke | What it does |
 | --- | --- | --- |
 | [`fake-no-more`](fake-no-more/) | `/fake-no-more` | Verify factual claims against primary sources and mark every claim with where it came from. |
-| [`claim-mr`](claim-mr/) | `/claim-mr` | Post a short “claimed for review” note on a GitHub, GitLab, or Gitea PR/MR so nobody double-starts the same review. |
 | [`claim-fix-ticket`](claim-fix-ticket/) | `/claim-fix-ticket` | Claim a GitLab issue, record a highlighted **before** UI video, implement, run gates, record the same region **after**. |
 | [`ticket-demo-video`](ticket-demo-video/) | `/ticket-demo-video` | Spoken Eve + live UI walkthrough, length = the explanation. Attach the mp4 to the MR; do not commit it. |
 | [`eve-narration`](eve-narration/) | `/eve-narration` | Eve (Grok TTS, pt-BR) over a finished mp4. Holds the frame when the line is longer than the cut. Burns captions. Does not speed the voice. |
@@ -20,7 +19,6 @@ Agent skills I reuse across Claude Code, Cursor, and Grok.
 skill-set/
   README.md
   fake-no-more/                    SKILL.md + references + evals
-  claim-mr/                        SKILL.md + detect-host
   claim-fix-ticket/                SKILL.md + scripts (red/green highlight)
   ticket-demo-video/               SKILL.md + scripts + Eve assets
   eve-narration/                   SKILL.md + TTS, clock, assemble, check
@@ -58,7 +56,6 @@ One short Eve + studio-board clip per README section. Watch them locally
 | --- | --- | --- |
 | Overview — what this repo is, and what you must change | **Start here** | `docs/ticket-demos/explainer-overview.mp4` |
 | `/fake-no-more` | no — general | `docs/ticket-demos/explainer-fake-no-more.mp4` |
-| `/claim-mr` | no — general | `docs/ticket-demos/explainer-claim-mr.mp4` |
 | `/claim-fix-ticket` | **yes** — GitLab, demo login, Phoenix locators | `docs/ticket-demos/explainer-claim-fix-ticket.mp4` |
 | `/ticket-demo-video` | **yes** — Eve assets, per-repo demo login | `docs/ticket-demos/explainer-ticket-demo-video.mp4` |
 | `/explain-implementation-video` | **yes** — same family as ticket-demo | `docs/ticket-demos/explainer-explain-implementation-video.mp4` |
@@ -130,7 +127,7 @@ npx skills add Yuri-Lima/skill-set -g -a claude-code -a cursor
 Grok already scans those Claude/Cursor folders. `--global` still writes
 `~/.grok/skills` so Grok keeps them if compat is off.
 
-Then invoke by slash command (`/claim-mr`, `/claim-fix-ticket`,
+Then invoke by slash command (`/claim-fix-ticket`,
 `/ticket-demo-video`, `/explain-implementation-video`,
 `/explain-in-browser`, `/playwright-agent`, `/claude-rc-setup`,
 `/bug-hunter`, `/live-ops-guard`)
@@ -309,7 +306,6 @@ or API calls.
 | `claim-fix-ticket` | Record-or-skip, auth stop, dirty tree |
 | `ticket-demo-video` | Auth stop, stay vs handoff, watch path |
 | `explain-implementation-video` | Handoff, ask-once, **no redaction** of the screencap, clip-clock |
-| `claim-mr` | Claim-or-stop; `scripts/detect-host.test.mjs` is a unit test |
 | `explain-in-browser` | Browser vs terminal; teaser-only TUI; keep-it-here; listen-in-page not `say`; `scripts/render-explanation.test.mjs` |
 | `playwright-agent` | Strict resolve, journal codegen; `cd playwright-agent && npm test` |
 | `claude-rc-setup` | Stop vs proceed (no systemd / no auth / crash loop); `bash claude-rc-setup/scripts/write-unit.test.sh` |
@@ -317,7 +313,6 @@ or API calls.
 | `eve-narration` | Ask once if the script is missing; stop if it is not Portuguese; do not speed the voice; still burn when captions already exist; one remount after a failed check |
 
 ```bash
-node --test claim-mr/scripts/detect-host.test.mjs
 node --test explain-in-browser/scripts/render-explanation.test.mjs
 bash claude-rc-setup/scripts/write-unit.test.sh
 node --test bug-hunter/scripts/lib.test.mjs
