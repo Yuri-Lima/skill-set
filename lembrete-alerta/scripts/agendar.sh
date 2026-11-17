@@ -50,7 +50,7 @@ STAGE="\${1:-manual}"
 
 if [ "\$STAGE" = "test" ]; then
   GIVEUP=8        # diálogo expira em 8 s no teste
-  MAX_CYCLES=1    # um ciclo só
+  MAX_CYCLES=2    # permite demonstrar uma soneca no teste
   SNOOZE=5        # soneca de 5 s no teste
 else
   GIVEUP=600      # rediálogo a cada 10 min
