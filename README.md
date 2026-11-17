@@ -14,6 +14,7 @@ Agent skills I reuse across Claude Code, Cursor, and Grok.
 | [`claude-rc-setup`](claude-rc-setup/) | `/claude-rc-setup` | Make Claude Code Remote Control a **systemd** service so claude.ai/code and the phone app connect without an SSH terminal. Linux only. [Local vs remote install](#claude-remote-control-setup). |
 | [`bug-hunter`](bug-hunter/) | `/bug-hunter` | Onboard a repo (scan + grill) into a **named** hunter, then hunt bugs the way that repo actually breaks. First questions are the real project name and slug. |
 | [`live-ops-guard`](live-ops-guard/) | `/live-ops-guard`, `/live-ops-guard review` | Hooks + read-only agent for live TeamCity/GitLab writes, leaked tokens, secret-store reads (`cat .env`, `gh auth token`) and **any SSH** — on Grok, Claude Code and Cursor. Default `hybrid` mode lets calls run and **interrupts only on a real exposure**, with options Proceed / Stop / Recommended / Evidence instead of a yes/no — but still holds ssh to a live-listed host and irreversible GitLab/TeamCity actions; `notify` drops those holds, `gate` holds every live call. Everything goes to a ledger; an exposed session is marked `NEEDS_TRACE_REVIEW` until a person runs `review` and `--ack`. Do not commit real hosts/IPs. |
+| [`lembrete-alerta`](lembrete-alerta/) | `/lembrete-alerta` | Schedule local reminders on **macOS** via launchd: continuous alarm that only stops on **OK**, a **5-min snooze** button, and an on-screen dialog with the checklist (address, documents). Works offline, no agent needed at fire time. |
 
 ```
 skill-set/
@@ -28,6 +29,7 @@ skill-set/
   claude-rc-setup/                 systemd unit for `claude remote-control` (Linux)
   bug-hunter/                      onboard + hunt; identity owns ~/.{slug}-agents
   live-ops-guard/                  Grok + Claude Code + Cursor hooks, ledger/marker trail, read-only agent
+  lembrete-alerta/                 SKILL.md + scripts (launchd alarm: ring-until-OK, snooze; macOS only)
   skill-explainers/                scripts + board for the README Eve videos
 ```
 
