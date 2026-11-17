@@ -34,6 +34,20 @@ mkdir -p "$SCRIPTS_DIR" "$AGENTS_DIR"
 
 ALERT_SCRIPT="$SCRIPTS_DIR/lembrete-$SLUG.sh"
 
+# ---------- valida TODAS as datas antes de escrever qualquer arquivo ----------
+# (senão um abort no meio deixa script/plists órfãos para trás)
+for DT in "$@"; do
+  if ! date -j -f "%Y-%m-%d %H:%M" "$DT" +%s >/dev/null 2>&1; then
+    echo "Data/hora inválida (use YYYY-MM-DD HH:MM): $DT" >&2
+    exit 1
+  fi
+  TS=$(date -j -f "%Y-%m-%d %H:%M" "$DT" +%s)
+  if [ "$TS" -le "$(date +%s)" ] && [ "${DRY_RUN:-0}" != "1" ]; then
+    echo "Horário já passou: $DT" >&2
+    exit 1
+  fi
+done
+
 # escapa aspas duplas e barras para uso dentro de strings AppleScript
 esc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
 TITLE_ESC=$(esc "$TITLE")
@@ -139,15 +153,6 @@ TOTAL=$#
 IDX=0
 for DT in "$@"; do
   IDX=$((IDX + 1))
-  if ! date -j -f "%Y-%m-%d %H:%M" "$DT" +%s >/dev/null 2>&1; then
-    echo "Data/hora inválida (use YYYY-MM-DD HH:MM): $DT" >&2
-    exit 1
-  fi
-  TS=$(date -j -f "%Y-%m-%d %H:%M" "$DT" +%s)
-  if [ "$TS" -le "$(date +%s)" ] && [ "${DRY_RUN:-0}" != "1" ]; then
-    echo "Horário já passou: $DT" >&2
-    exit 1
-  fi
   MONTH=$((10#$(date -j -f "%Y-%m-%d %H:%M" "$DT" +%m)))
   DAY=$((10#$(date -j -f "%Y-%m-%d %H:%M" "$DT" +%d)))
   HOUR=$((10#$(date -j -f "%Y-%m-%d %H:%M" "$DT" +%H)))
