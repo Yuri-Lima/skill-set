@@ -1,0 +1,8 @@
+schema_version: "1.1"
+name: rejeita-horario-no-passado
+expected_outcome: |
+  A data pedida (2020) já passou. Nada é agendado: ou a conversa aponta o
+  problema antes de rodar qualquer comando, ou agendar.sh aborta com
+  "Horário já passou" sem registrar nada no launchd. O usuário é avisado
+  com clareza e convidado a dar uma data futura (por exemplo, perguntando
+  se queria 2027).

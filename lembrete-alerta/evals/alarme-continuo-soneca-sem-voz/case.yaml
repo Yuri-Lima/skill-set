@@ -1,0 +1,7 @@
+schema_version: "1.1"
+name: alarme-continuo-soneca-sem-voz
+expected_outcome: |
+  Gera o lembrete em DRY_RUN e aponta, no script de alerta gerado, os três
+  comportamentos pedidos: loop contínuo de som que só termina no OK,
+  botão "Soneca 5 min" com pausa de 300 s, e ausência de voz (nenhum uso
+  de say). Também explica a trava de segurança de ~2 h.

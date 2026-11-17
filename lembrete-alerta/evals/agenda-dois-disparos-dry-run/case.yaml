@@ -1,0 +1,8 @@
+schema_version: "1.1"
+name: agenda-dois-disparos-dry-run
+expected_outcome: |
+  Usa a skill lembrete-alerta com DRY_RUN=1 para gerar, sem registrar nada
+  no launchd, um script de alerta e dois plists: um para 2027-03-10 14:00
+  (alarm) e outro para 2027-03-10 15:00 (last). O corpo do lembrete menciona
+  a clínica/endereço e os dois itens a levar. A resposta diz onde os
+  arquivos ficaram e como agendar de verdade depois.
